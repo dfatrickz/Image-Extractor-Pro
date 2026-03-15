@@ -90,6 +90,7 @@ const duplicateStatusBannerElement = document.getElementById("duplicateStatusBan
 const duplicateStatusMessageElement = document.getElementById("duplicateStatusMessage");
 const duplicateToggleWrapElement = document.getElementById("duplicateToggleWrap");
 const duplicateToggleElement = document.getElementById("duplicateToggle");
+const manualDupeCheckButton = document.getElementById("btnManualDupeCheck");
 const galleryLoadingOverlayElement = document.getElementById("galleryLoadingOverlay");
 const loadingTextElement = document.getElementById("loadingText");
 const loadingBarElement = document.getElementById("loadingBar");
@@ -115,6 +116,10 @@ const folderNameInput = document.getElementById("folderNameInput");
 const gallerySortSelect = document.getElementById("iepGallerySort");
 const downloadModeSummary = document.getElementById("downloadModeSummary");
 const saveModeHint = document.getElementById("saveModeHint");
+const deleteModalElement = document.getElementById("iepDeleteModal");
+const hideDeleteWarningCheckbox = document.getElementById("iepHideDeleteWarning");
+const cancelDeleteButton = document.getElementById("iepCancelDelete");
+const confirmDeleteButton = document.getElementById("iepConfirmDelete");
 const imageCardTemplate = document.getElementById("imageCardTemplate");
 const SELECTED_INDICATOR_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
 let loadingOverlayFrame = 0;
@@ -129,7 +134,13 @@ const state = {
   isAnalyzingDuplicates: false,
   showDuplicates: false,
   duplicateCount: 0,
-  downloadPreferences: createDefaultDownloadPreferences()
+  downloadPreferences: createDefaultDownloadPreferences(),
+  gallerySettings: {
+    autoCheckDuplicates: true,
+    hideDeleteWarning: false
+  },
+  hasDuplicateCheckRun: false,
+  pendingDelete: null
 };
 applyTheme(state.downloadPreferences.theme);
 selectAllButton.addEventListener("click", () => setVisibleSelections(true));
@@ -147,6 +158,13 @@ saveModeSelect.addEventListener("change", updateDownloadControls);
 folderNameInput.addEventListener("input", updateDownloadControls);
 duplicateToggleElement.addEventListener("change", handleDuplicateToggle);
 gallerySortSelect?.addEventListener("change", render);
+manualDupeCheckButton?.addEventListener("click", () => {
+  void handleManualDuplicateCheck();
+});
+cancelDeleteButton?.addEventListener("click", hideDeleteModal);
+confirmDeleteButton?.addEventListener("click", () => {
+  void confirmDeleteModal();
+});
 
 api.downloads.onChanged.addListener((delta) => {
   if (!delta.id || !delta.state?.current) {
@@ -168,9 +186,12 @@ window.addEventListener("beforeunload", () => {
 initialize();
 
 async function initialize() {
+  state.gallerySettings = await loadGallerySettings();
   state.isAnalyzingDuplicates = false;
   state.showDuplicates = false;
   state.duplicateCount = 0;
+  state.hasDuplicateCheckRun = false;
+  state.pendingDelete = null;
   showLoadingOverlay("Processing Images...", 0);
   setStatus("Loading extraction results...", "default");
   setControlsDisabled(true);
@@ -212,18 +233,15 @@ async function initialize() {
     }
 
     if (state.images.length) {
-      state.isAnalyzingDuplicates = true;
-      queueLoadingOverlayUpdate(0, "Scanning for duplicates...");
-      setStatus(
-        `Loaded ${state.images.length} extracted image${state.images.length === 1 ? "" : "s"}. Detecting duplicates...`,
-        "default"
-      );
-      render();
-      state.images = await detectDuplicates(state.images);
-      state.duplicateCount = state.images.filter((image) => image.isDuplicate).length;
-      state.isAnalyzingDuplicates = false;
-      const uniqueCount = Math.max(state.images.length - state.duplicateCount, 0);
-      setStatus(`Loaded ${uniqueCount} unique image${uniqueCount === 1 ? "" : "s"}.`, "success");
+      if (state.gallerySettings.autoCheckDuplicates) {
+        await runDuplicateCheck();
+        const uniqueCount = Math.max(state.images.length - state.duplicateCount, 0);
+        setStatus(`Loaded ${uniqueCount} unique image${uniqueCount === 1 ? "" : "s"}.`, "success");
+      } else {
+        state.duplicateCount = 0;
+        state.hasDuplicateCheckRun = false;
+        setStatus(`Loaded ${state.images.length} extracted image${state.images.length === 1 ? "" : "s"}.`, "success");
+      }
     } else {
       state.duplicateCount = 0;
       setStatus("No qualifying images were found for this page.", "default");
@@ -285,6 +303,17 @@ function renderDuplicateStatus() {
   duplicateToggleElement.disabled = state.isAnalyzingDuplicates || duplicateCount === 0;
   duplicateToggleWrapElement.hidden = state.isAnalyzingDuplicates || duplicateCount === 0;
   duplicateStatusBannerElement.classList.toggle("has-duplicates", duplicateCount > 0);
+  if (manualDupeCheckButton) {
+    manualDupeCheckButton.disabled = state.isAnalyzingDuplicates || state.images.length === 0;
+    manualDupeCheckButton.textContent = state.hasDuplicateCheckRun ? "Check Again" : "Check for duplicates";
+  }
+
+  if (!state.hasDuplicateCheckRun && !state.gallerySettings.autoCheckDuplicates) {
+    duplicateStatusBannerElement.dataset.tone = "default";
+    duplicateStatusBannerElement.classList.remove("has-duplicates");
+    duplicateStatusMessageElement.textContent = "";
+    return;
+  }
 
   if (state.isAnalyzingDuplicates && state.images.length) {
     duplicateStatusBannerElement.dataset.tone = "default";
@@ -386,6 +415,7 @@ function renderGrid(matchingImages) {
     const dimensionsElement = card.querySelector(".card-dimensions");
     const renderedDimensionsElement = card.querySelector(".card-rendered-dimensions");
     const openLink = card.querySelector(".card-open-link");
+    const deleteButton = card.querySelector(".iep-delete-card-btn");
 
     card.dataset.clientId = image.clientId;
     card.dataset.url = image.url || "";
@@ -421,6 +451,10 @@ function renderGrid(matchingImages) {
     renderedDimensionsElement.textContent = formatRenderedDimensions(image);
     renderedDimensionsElement.hidden = !renderedDimensionsElement.textContent;
     openLink.href = image.url;
+    if (deleteButton) {
+      deleteButton.dataset.url = image.url || "";
+      deleteButton.dataset.clientId = image.clientId;
+    }
 
     fragment.appendChild(card);
   });
@@ -489,7 +523,21 @@ function matchesActiveFilters(image) {
 }
 
 function handleGridClick(event) {
-  if (event.target.closest("a")) {
+  const deleteButton = event.target.closest(".iep-delete-card-btn");
+  if (deleteButton) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const card = deleteButton.closest(".image-card");
+    if (!card) {
+      return;
+    }
+
+    requestDeleteForCard(card);
+    return;
+  }
+
+  if (event.target.closest("a, button")) {
     return;
   }
 
@@ -502,6 +550,10 @@ function handleGridClick(event) {
 }
 
 function handleGridKeydown(event) {
+  if (event.target.closest("button, a")) {
+    return;
+  }
+
   if (event.key !== "Enter" && event.key !== " ") {
     return;
   }
@@ -572,6 +624,132 @@ function resetFilters() {
   formatFilterSelect.value = "all";
   render();
   setStatus("Filters reset. All extracted images are visible again.", "default");
+}
+
+async function handleManualDuplicateCheck() {
+  if (!state.images.length || state.isAnalyzingDuplicates) {
+    return;
+  }
+
+  await runDuplicateCheck();
+
+  if (state.duplicateCount === 0) {
+    setStatus("No duplicates found in the current gallery.", "default");
+  } else {
+    setStatus(
+      `${state.duplicateCount} duplicate image${state.duplicateCount === 1 ? "" : "s"} flagged in the current gallery.`,
+      "default"
+    );
+  }
+}
+
+async function runDuplicateCheck() {
+  if (!state.images.length) {
+    state.duplicateCount = 0;
+    state.hasDuplicateCheckRun = false;
+    render();
+    return;
+  }
+
+  state.isAnalyzingDuplicates = true;
+  state.showDuplicates = false;
+  showLoadingOverlay("Scanning for duplicates...", 0);
+  render();
+
+  try {
+    state.images = await detectDuplicates(state.images);
+    state.duplicateCount = state.images.filter((image) => image.isDuplicate).length;
+    state.hasDuplicateCheckRun = true;
+  } finally {
+    state.isAnalyzingDuplicates = false;
+    hideLoadingOverlay();
+    render();
+  }
+}
+
+function requestDeleteForCard(card) {
+  const clientId = String(card?.dataset.clientId || "");
+  const url = String(card?.dataset.url || "");
+
+  if (!clientId) {
+    return;
+  }
+
+  state.pendingDelete = {
+    clientId,
+    url
+  };
+
+  if (state.gallerySettings.hideDeleteWarning) {
+    removeImageFromGallery(clientId, url);
+    return;
+  }
+
+  showDeleteModal();
+}
+
+function showDeleteModal() {
+  if (!deleteModalElement) {
+    return;
+  }
+
+  if (hideDeleteWarningCheckbox) {
+    hideDeleteWarningCheckbox.checked = false;
+  }
+
+  deleteModalElement.style.display = "flex";
+}
+
+function hideDeleteModal() {
+  if (deleteModalElement) {
+    deleteModalElement.style.display = "none";
+  }
+
+  if (hideDeleteWarningCheckbox) {
+    hideDeleteWarningCheckbox.checked = false;
+  }
+
+  state.pendingDelete = null;
+}
+
+async function confirmDeleteModal() {
+  const pendingDelete = state.pendingDelete;
+  if (!pendingDelete?.clientId) {
+    hideDeleteModal();
+    return;
+  }
+
+  removeImageFromGallery(pendingDelete.clientId, pendingDelete.url);
+
+  if (hideDeleteWarningCheckbox?.checked) {
+    state.gallerySettings.hideDeleteWarning = true;
+    await persistActiveProfileFilterPatch({
+      hideDeleteWarning: true
+    });
+  }
+
+  hideDeleteModal();
+}
+
+function removeImageFromGallery(clientId, url = "") {
+  state.images = state.images.filter((image) => !matchesDeletionTarget(image, clientId, url));
+  originalOrder = originalOrder.filter((image) => !matchesDeletionTarget(image, clientId, url));
+  state.pendingDelete = null;
+
+  if (!state.images.some((image) => image.isDuplicate)) {
+    state.showDuplicates = false;
+  }
+
+  render();
+  setStatus("Image removed from the gallery.", "default");
+}
+
+function matchesDeletionTarget(image, clientId, url) {
+  if (clientId) {
+    return image.clientId === clientId;
+  }
+
+  return Boolean(url) && image.url === url;
 }
 
 async function detectDuplicates(images) {
@@ -1336,6 +1514,70 @@ function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages
 function setStatus(message, tone) {
   statusMessageElement.textContent = message;
   statusBannerElement.dataset.tone = tone;
+}
+
+async function loadGallerySettings() {
+  const defaults = {
+    autoCheckDuplicates: true,
+    hideDeleteWarning: false
+  };
+
+  try {
+    const result = await api.storage.local.get(["iepSettingsManager"]);
+    const manager = result?.iepSettingsManager;
+    const profiles = Array.isArray(manager?.profiles) ? manager.profiles : [];
+    const activeId = manager?.activeId || "default";
+    const activeProfile = profiles.find((profile) => profile?.id === activeId) || profiles[0];
+    const filters = activeProfile?.filters && typeof activeProfile.filters === "object" ? activeProfile.filters : {};
+
+    return {
+      autoCheckDuplicates: typeof filters.autoCheckDuplicates === "boolean"
+        ? filters.autoCheckDuplicates
+        : defaults.autoCheckDuplicates,
+      hideDeleteWarning: typeof filters.hideDeleteWarning === "boolean"
+        ? filters.hideDeleteWarning
+        : defaults.hideDeleteWarning
+    };
+  } catch (_error) {
+    return defaults;
+  }
+}
+
+async function persistActiveProfileFilterPatch(patch) {
+  try {
+    const result = await api.storage.local.get(["iepSettingsManager"]);
+    const manager = result?.iepSettingsManager;
+    const profiles = Array.isArray(manager?.profiles) ? manager.profiles : [];
+    const activeId = manager?.activeId || "default";
+
+    if (!profiles.length) {
+      return;
+    }
+
+    const nextProfiles = profiles.map((profile) => {
+      if (profile?.id !== activeId) {
+        return profile;
+      }
+
+      return {
+        ...profile,
+        filters: {
+          ...(profile.filters && typeof profile.filters === "object" ? profile.filters : {}),
+          ...patch
+        }
+      };
+    });
+
+    await api.storage.local.set({
+      iepSettingsManager: {
+        ...manager,
+        activeId,
+        profiles: nextProfiles
+      }
+    });
+  } catch (_error) {
+    // Ignore storage write failures and keep the current in-memory state.
+  }
 }
 
 function showLoadingOverlay(text, percent) {

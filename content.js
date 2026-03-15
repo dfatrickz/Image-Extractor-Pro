@@ -169,6 +169,8 @@
         downloadMode: "zip",
         subfolderName: "",
         disablePageScrolling: false,
+        autoCheckDuplicates: true,
+        hideDeleteWarning: false,
         rateLimitMs: 0,
         individualDownloadWarningThreshold: 30,
         theme: "system",
@@ -391,6 +393,7 @@
         imageOriginSelect: this.shadowRoot.getElementById("iepImageOrigin"),
         themeSelect: this.shadowRoot.getElementById("iepTheme"),
         disablePageScrollingToggle: this.shadowRoot.getElementById("iepDisablePageScrolling"),
+        autoCheckDuplicatesToggle: this.shadowRoot.getElementById("iepAutoCheckDuplicates"),
         disableSiteControlsToggle: this.shadowRoot.getElementById("iepDisableSiteControls"),
         hoverDownloadToggle: this.shadowRoot.getElementById("iepHoverDownloadEnabled"),
         showFabToggle: this.shadowRoot.getElementById("iepShowFab"),
@@ -559,6 +562,10 @@
         this.updateFiltersFromInputs();
       });
 
+      this.elements.autoCheckDuplicatesToggle.addEventListener("change", () => {
+        this.updateFiltersFromInputs();
+      });
+
       this.elements.disableSiteControlsToggle.addEventListener("change", () => {
         this.updateFiltersFromInputs();
       });
@@ -712,6 +719,7 @@
       this.elements.imageOriginSelect.value = this.state.filters.imageOrigin;
       this.elements.themeSelect.value = this.state.filters.theme;
       this.elements.disablePageScrollingToggle.checked = Boolean(this.state.filters.disablePageScrolling);
+      this.elements.autoCheckDuplicatesToggle.checked = Boolean(this.state.filters.autoCheckDuplicates);
       this.elements.disableSiteControlsToggle.checked = Boolean(this.state.filters.disableSiteControls);
       this.elements.hoverDownloadToggle.checked = Boolean(this.state.filters.hoverDownloadEnabled);
       this.elements.showFabToggle.checked = Boolean(this.state.showFab);
@@ -738,6 +746,7 @@
       this.elements.imageOriginSelect.disabled = this.state.busy;
       this.elements.themeSelect.disabled = this.state.busy;
       this.elements.disablePageScrollingToggle.disabled = this.state.busy;
+      this.elements.autoCheckDuplicatesToggle.disabled = this.state.busy;
       this.elements.disableSiteControlsToggle.disabled = this.state.busy;
       this.elements.hoverDownloadToggle.disabled = this.state.busy;
       this.elements.showFabToggle.disabled = this.state.busy;
@@ -868,6 +877,7 @@
       this.state.filters.theme = this.elements.themeSelect.value || "system";
       this.state.filters.downloadMode = this.elements.downloadModeRadios.find((radio) => radio.checked)?.value || "zip";
       this.state.filters.disablePageScrolling = Boolean(this.elements.disablePageScrollingToggle.checked);
+      this.state.filters.autoCheckDuplicates = Boolean(this.elements.autoCheckDuplicatesToggle.checked);
       this.state.filters.disableSiteControls = Boolean(this.elements.disableSiteControlsToggle.checked);
       this.state.filters.hoverDownloadEnabled = Boolean(this.elements.hoverDownloadToggle.checked);
       this.state.showFab = Boolean(this.elements.showFabToggle.checked);
@@ -1633,7 +1643,7 @@
           </section>
           <button id="iepSurferHoverBtn" class="iep-surfer-hover-btn" type="button" aria-label="Download hovered image" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M8 10l4 4 4-4"></path><path d="M5 20h14"></path></svg></button>
           <div id="iepSelectionOutline" class="iep-selection-outline" hidden></div>
-          <div id="iepSettingsModal" class="iep-settings-modal" hidden><div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div><section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings"><div class="iep-modal-header"><h2>Settings</h2><p>Configure download behavior and limits</p></div><div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);"><select id="iepProfileSelect" style="flex: 1; background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 6px;"></select><button id="iepSaveProfileBtn" title="Save as New Profile" style="background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Save New</button><button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button></div><div class="iep-settings-grid"><section class="iep-settings-panel"><h3>Download Preferences</h3><p>Choose how the gallery should package and label the selected images.</p><div class="iep-settings-stack"><div class="iep-inline-group"><span class="iep-field-label">Download Mode</span><div class="iep-radio-group"><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label></div></div><label class="iep-field"><span>Subfolder Name</span><input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)"></label><label class="iep-field"><span>Theme</span><select id="iepTheme" class="iep-select"><option value="system">System (Default)</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="iep-field"><span>Image Origin</span><select id="iepImageOrigin" class="iep-select"><option value="all">All</option><option value="rendered">Rendered</option><option value="source">Source</option></select></label></div></section><section class="iep-settings-panel"><h3>Safety &amp; Behavior</h3><p>Controls for UI visibility and guarded download behavior in the gallery.</p><div class="iep-settings-stack"><label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label><label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label><label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Quick Hover Download</span></label><label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label><label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label><label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label></div></section></div><div class="iep-actions"><button id="iepSettingsDoneButton" class="iep-button iep-button-primary" type="button">Done</button></div></section></div>
+          <div id="iepSettingsModal" class="iep-settings-modal" hidden><div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div><section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings"><div class="iep-modal-header"><h2>Settings</h2><p>Configure download behavior and limits</p></div><div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);"><select id="iepProfileSelect" style="flex: 1; background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 6px;"></select><button id="iepSaveProfileBtn" title="Save as New Profile" style="background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Save New</button><button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button></div><div class="iep-settings-grid"><section class="iep-settings-panel"><h3>Download Preferences</h3><p>Choose how the gallery should package and label the selected images.</p><div class="iep-settings-stack"><div class="iep-inline-group"><span class="iep-field-label">Download Mode</span><div class="iep-radio-group"><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label></div></div><label class="iep-field"><span>Subfolder Name</span><input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)"></label><label class="iep-field"><span>Theme</span><select id="iepTheme" class="iep-select"><option value="system">System (Default)</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="iep-field"><span>Image Origin</span><select id="iepImageOrigin" class="iep-select"><option value="all">All</option><option value="rendered">Rendered</option><option value="source">Source</option></select></label></div></section><section class="iep-settings-panel"><h3>Safety &amp; Behavior</h3><p>Controls for UI visibility and guarded download behavior in the gallery.</p><div class="iep-settings-stack"><label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label><label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox" checked><span>Enable automatic duplicate checking (Gallery)</span></label><label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label><label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Quick Hover Download</span></label><label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label><label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label><label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label></div></section></div><div class="iep-actions"><button id="iepSettingsDoneButton" class="iep-button iep-button-primary" type="button">Done</button></div></section></div>
         </div>
       `;
     }
