@@ -97,6 +97,7 @@
 
   class FloatingExtractorController {
     constructor() {
+      const initialFilters = this.createDefaultFilters();
       this.host = null;
       this.shadowRoot = null;
       this.elements = {};
@@ -127,22 +128,8 @@
         progressText: "Initializing scan...",
         statusMessage: "Run a page extract or select an area, then review the match count before opening the gallery.",
         statusTone: "default",
-        filters: {
-          minWidth: 150,
-          minHeight: 150,
-          formats: this.createDefaultFormatState(),
-          disableSiteControls: true,
-          hoverDownloadEnabled: true,
-          imageOrigin: "all",
-          downloadMode: "zip",
-          subfolderName: "",
-          disablePageScrolling: false,
-          rateLimitMs: 0,
-          individualDownloadWarningThreshold: 30,
-          theme: "system",
-          ignoredSelectors: "",
-          preferLinkedOriginals: true
-        },
+        filters: initialFilters,
+        profileData: this.createDefaultProfileData(initialFilters),
         fabPosition: {
           x: Math.max(window.innerWidth - 88, 16),
           y: 96
@@ -171,39 +158,154 @@
       }, {});
     }
 
+    createDefaultFilters() {
+      return {
+        minWidth: 150,
+        minHeight: 150,
+        formats: this.createDefaultFormatState(),
+        disableSiteControls: true,
+        hoverDownloadEnabled: true,
+        imageOrigin: "all",
+        downloadMode: "zip",
+        subfolderName: "",
+        disablePageScrolling: false,
+        rateLimitMs: 0,
+        individualDownloadWarningThreshold: 30,
+        theme: "system",
+        ignoredSelectors: "",
+        preferLinkedOriginals: true,
+        showFab: true
+      };
+    }
+
+    normalizeFilters(filters = {}) {
+      const defaultFilters = this.createDefaultFilters();
+      return {
+        ...defaultFilters,
+        ...filters,
+        formats: {
+          ...defaultFilters.formats,
+          ...(filters.formats && typeof filters.formats === "object" ? filters.formats : {})
+        },
+        showFab: typeof filters.showFab === "boolean" ? filters.showFab : defaultFilters.showFab
+      };
+    }
+
+    cloneFilters(filters = {}) {
+      const normalizedFilters = this.normalizeFilters(filters);
+      return {
+        ...normalizedFilters,
+        formats: {
+          ...normalizedFilters.formats
+        }
+      };
+    }
+
+    createDefaultProfileData(filters = this.createDefaultFilters()) {
+      return {
+        activeId: "default",
+        profiles: [
+          {
+            id: "default",
+            name: "Default Profile",
+            filters: this.cloneFilters(filters)
+          }
+        ]
+      };
+    }
+
+    normalizeProfileManager(manager) {
+      const incomingProfiles = Array.isArray(manager?.profiles) ? manager.profiles : [];
+      const profiles = incomingProfiles
+        .filter((profile) => profile && typeof profile === "object")
+        .map((profile, index) => ({
+          id: String(profile.id || `profile-${index + 1}`),
+          name: String(profile.name || `Profile ${index + 1}`),
+          filters: this.cloneFilters(profile.filters || {})
+        }));
+
+      if (!profiles.some((profile) => profile.id === "default")) {
+        profiles.unshift({
+          id: "default",
+          name: "Default Profile",
+          filters: this.cloneFilters(this.createDefaultFilters())
+        });
+      }
+
+      const activeId = profiles.some((profile) => profile.id === manager?.activeId)
+        ? manager.activeId
+        : "default";
+
+      return {
+        activeId,
+        profiles
+      };
+    }
+
+    getActiveProfile() {
+      return this.state.profileData.profiles.find((profile) => profile.id === this.state.profileData.activeId) || null;
+    }
+
+    applyProfileFilters(filters) {
+      const nextFilters = this.cloneFilters(filters);
+      this.state.filters = nextFilters;
+      this.state.showFab = Boolean(nextFilters.showFab);
+    }
+
+    applyActiveProfileFilters() {
+      const activeProfile = this.getActiveProfile()
+        || this.state.profileData.profiles.find((profile) => profile.id === "default")
+        || this.state.profileData.profiles[0];
+
+      if (!activeProfile) {
+        const defaultProfileData = this.createDefaultProfileData();
+        this.state.profileData = defaultProfileData;
+        this.applyProfileFilters(defaultProfileData.profiles[0].filters);
+        return;
+      }
+
+      this.state.profileData.activeId = activeProfile.id;
+      this.applyProfileFilters(activeProfile.filters);
+    }
+
     async loadPersistedFilters() {
       try {
-        const result = await api.storage.local.get(["iepFilters"]);
-        if (!result?.iepFilters || typeof result.iepFilters !== "object") {
+        const result = await api.storage.local.get(["iepSettingsManager", "iepFilters"]);
+
+        if (result?.iepSettingsManager && typeof result.iepSettingsManager === "object") {
+          this.state.profileData = this.normalizeProfileManager(result.iepSettingsManager);
+          this.applyActiveProfileFilters();
           return;
         }
 
-        const storedFilters = result.iepFilters;
-        this.state.filters = {
-          ...this.state.filters,
-          ...storedFilters,
-          formats: {
-            ...this.createDefaultFormatState(),
-            ...(storedFilters.formats && typeof storedFilters.formats === "object" ? storedFilters.formats : {})
-          }
-        };
-
-        if (typeof storedFilters.showFab === "boolean") {
-          this.state.showFab = storedFilters.showFab;
+        if (result?.iepFilters && typeof result.iepFilters === "object") {
+          const migratedFilters = this.cloneFilters(result.iepFilters);
+          this.state.profileData = this.createDefaultProfileData(migratedFilters);
+          this.applyActiveProfileFilters();
+          await this.saveManagerToStorage();
+          return;
         }
+
+        this.state.profileData = this.createDefaultProfileData(this.state.filters);
+        this.applyActiveProfileFilters();
       } catch (error) {
         // Ignore storage failures and fall back to defaults.
       }
     }
 
-    persistFilters() {
-      const persistedFilters = {
-        ...this.state.filters,
-        showFab: this.state.showFab
-      };
+    syncActiveProfileFromState() {
+      const activeProfile = this.getActiveProfile();
+      if (!activeProfile) {
+        return;
+      }
 
+      this.state.filters.showFab = this.state.showFab;
+      activeProfile.filters = this.cloneFilters(this.state.filters);
+    }
+
+    saveManagerToStorage() {
       void api.storage.local.set({
-        iepFilters: persistedFilters
+        iepSettingsManager: this.state.profileData
       });
     }
 
@@ -281,6 +383,9 @@
         settingsModal: this.shadowRoot.getElementById("iepSettingsModal"),
         settingsBackdrop: this.shadowRoot.getElementById("iepSettingsBackdrop"),
         settingsDoneButton: this.shadowRoot.getElementById("iepSettingsDoneButton"),
+        profileSelect: this.shadowRoot.getElementById("iepProfileSelect"),
+        saveProfileButton: this.shadowRoot.getElementById("iepSaveProfileBtn"),
+        deleteProfileButton: this.shadowRoot.getElementById("iepDeleteProfileBtn"),
         downloadModeRadios: Array.from(this.shadowRoot.querySelectorAll("input[name='iepDownloadMode']")),
         subfolderNameInput: this.shadowRoot.getElementById("iepSubfolderName"),
         imageOriginSelect: this.shadowRoot.getElementById("iepImageOrigin"),
@@ -344,6 +449,67 @@
 
       this.elements.settingsDoneButton.addEventListener("click", () => {
         this.closeSettingsModal();
+      });
+
+      this.elements.profileSelect.addEventListener("change", () => {
+        const nextActiveId = this.elements.profileSelect.value;
+        if (!nextActiveId || nextActiveId === this.state.profileData.activeId) {
+          return;
+        }
+
+        const previousFilters = this.cloneFilters(this.state.filters);
+        this.state.profileData.activeId = nextActiveId;
+        this.applyActiveProfileFilters();
+        this.renderProfileUI();
+        this.handleProfileFiltersChanged(previousFilters);
+        this.saveManagerToStorage();
+      });
+
+      this.elements.saveProfileButton.addEventListener("click", () => {
+        const name = window.prompt("Enter new profile name:");
+        if (!name || !name.trim()) {
+          return;
+        }
+
+        const profileId = `profile-${Date.now()}`;
+        const nextProfile = {
+          id: profileId,
+          name: name.trim(),
+          filters: this.cloneFilters({
+            ...this.state.filters,
+            showFab: this.state.showFab
+          })
+        };
+
+        this.state.profileData.profiles.push(nextProfile);
+        this.state.profileData.activeId = profileId;
+        this.renderProfileUI();
+        this.saveManagerToStorage();
+        this.render();
+      });
+
+      this.elements.deleteProfileButton.addEventListener("click", () => {
+        if (this.state.profileData.activeId === "default") {
+          return;
+        }
+
+        const activeProfile = this.getActiveProfile();
+        if (!activeProfile) {
+          return;
+        }
+
+        const confirmed = window.confirm(`Delete the profile "${activeProfile.name}"?`);
+        if (!confirmed) {
+          return;
+        }
+
+        const previousFilters = this.cloneFilters(this.state.filters);
+        this.state.profileData.profiles = this.state.profileData.profiles.filter((profile) => profile.id !== activeProfile.id);
+        this.state.profileData.activeId = "default";
+        this.applyActiveProfileFilters();
+        this.renderProfileUI();
+        this.handleProfileFiltersChanged(previousFilters);
+        this.saveManagerToStorage();
       });
 
       this.elements.minimizeButton.addEventListener("click", () => {
@@ -539,6 +705,7 @@
       this.elements.settingsButton.setAttribute("aria-pressed", this.state.settingsMode ? "true" : "false");
       this.elements.settingsButton.classList.toggle("iep-icon-active", this.state.settingsMode);
       this.elements.panelHeader.classList.toggle("is-dragging", this.dragState?.kind === "panel");
+      this.renderProfileUI();
       this.elements.minWidthInput.value = String(this.state.filters.minWidth);
       this.elements.minHeightInput.value = String(this.state.filters.minHeight);
       this.elements.subfolderNameInput.value = this.state.filters.subfolderName;
@@ -577,6 +744,9 @@
       this.elements.rateLimitInput.disabled = this.state.busy;
       this.elements.individualWarningThresholdInput.disabled = this.state.busy;
       this.elements.settingsDoneButton.disabled = this.state.busy;
+      this.elements.profileSelect.disabled = this.state.busy;
+      this.elements.saveProfileButton.disabled = this.state.busy;
+      this.elements.deleteProfileButton.disabled = this.state.busy || this.state.profileData.activeId === "default";
       this.elements.extractAllButton.disabled = this.state.busy || this.state.selectionMode;
       this.elements.selectAreaButton.disabled = this.state.busy || this.state.selectionMode;
       this.elements.selectAreaButton.textContent = this.state.selectionMode ? "Selecting Area..." : "Select Area to Extract";
@@ -663,6 +833,33 @@
       this.elements.scanPercentText.textContent = `${this.state.progressPercent}%`;
     }
 
+    renderProfileUI() {
+      if (!this.elements.profileSelect || !this.elements.deleteProfileButton) {
+        return;
+      }
+
+      const optionsMarkup = this.state.profileData.profiles
+        .map((profile) => `<option value="${escapeHtmlAttribute(profile.id)}">${escapeHtml(profile.name)}</option>`)
+        .join("");
+
+      this.elements.profileSelect.innerHTML = optionsMarkup;
+      this.elements.profileSelect.value = this.state.profileData.activeId;
+      this.elements.deleteProfileButton.disabled = this.state.busy || this.state.profileData.activeId === "default";
+    }
+
+    handleProfileFiltersChanged(previousFilters) {
+      this.renderFormatOptions();
+      this.render();
+      if (shouldRescanForProfileChange(previousFilters, this.state.filters) && this.state.selectedContainer && this.state.selectedContainer.isConnected) {
+        void this.scanSelectedContainer();
+        return;
+      }
+
+      if (this.state.scannedImages.length) {
+        this.schedulePreviewRefresh();
+      }
+    }
+
     updateFiltersFromInputs(options = {}) {
       this.state.filters.minWidth = Math.max(0, Number.parseInt(this.elements.minWidthInput.value || "0", 10) || 0);
       this.state.filters.minHeight = Math.max(0, Number.parseInt(this.elements.minHeightInput.value || "0", 10) || 0);
@@ -679,7 +876,9 @@
       this.state.filters.ignoredSelectors = String(this.elements.ignoredSelectorsInput.value || "").trim();
       this.state.filters.preferLinkedOriginals = Boolean(this.elements.preferLinkedOriginalsCheckbox.checked);
       this.state.filters.formats = readFormatStateFromUi(this.shadowRoot, this.createDefaultFormatState());
-      this.persistFilters();
+      this.state.filters.showFab = this.state.showFab;
+      this.syncActiveProfileFromState();
+      this.saveManagerToStorage();
 
       if (options.rescan && this.state.selectedContainer && this.state.selectedContainer.isConnected) {
         void this.scanSelectedContainer();
@@ -1434,7 +1633,7 @@
           </section>
           <button id="iepSurferHoverBtn" class="iep-surfer-hover-btn" type="button" aria-label="Download hovered image" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M8 10l4 4 4-4"></path><path d="M5 20h14"></path></svg></button>
           <div id="iepSelectionOutline" class="iep-selection-outline" hidden></div>
-          <div id="iepSettingsModal" class="iep-settings-modal" hidden><div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div><section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings"><div class="iep-modal-header"><h2>Settings</h2><p>Configure download behavior and limits</p></div><div class="iep-settings-grid"><section class="iep-settings-panel"><h3>Download Preferences</h3><p>Choose how the gallery should package and label the selected images.</p><div class="iep-settings-stack"><div class="iep-inline-group"><span class="iep-field-label">Download Mode</span><div class="iep-radio-group"><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label></div></div><label class="iep-field"><span>Subfolder Name</span><input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)"></label><label class="iep-field"><span>Theme</span><select id="iepTheme" class="iep-select"><option value="system">System (Default)</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="iep-field"><span>Image Origin</span><select id="iepImageOrigin" class="iep-select"><option value="all">All</option><option value="rendered">Rendered</option><option value="source">Source</option></select></label></div></section><section class="iep-settings-panel"><h3>Safety &amp; Behavior</h3><p>Controls for UI visibility and guarded download behavior in the gallery.</p><div class="iep-settings-stack"><label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label><label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label><label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Quick Hover Download</span></label><label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label><label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label><label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label></div></section></div><div class="iep-actions"><button id="iepSettingsDoneButton" class="iep-button iep-button-primary" type="button">Done</button></div></section></div>
+          <div id="iepSettingsModal" class="iep-settings-modal" hidden><div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div><section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings"><div class="iep-modal-header"><h2>Settings</h2><p>Configure download behavior and limits</p></div><div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);"><select id="iepProfileSelect" style="flex: 1; background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 6px;"></select><button id="iepSaveProfileBtn" title="Save as New Profile" style="background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Save New</button><button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button></div><div class="iep-settings-grid"><section class="iep-settings-panel"><h3>Download Preferences</h3><p>Choose how the gallery should package and label the selected images.</p><div class="iep-settings-stack"><div class="iep-inline-group"><span class="iep-field-label">Download Mode</span><div class="iep-radio-group"><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label></div></div><label class="iep-field"><span>Subfolder Name</span><input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)"></label><label class="iep-field"><span>Theme</span><select id="iepTheme" class="iep-select"><option value="system">System (Default)</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="iep-field"><span>Image Origin</span><select id="iepImageOrigin" class="iep-select"><option value="all">All</option><option value="rendered">Rendered</option><option value="source">Source</option></select></label></div></section><section class="iep-settings-panel"><h3>Safety &amp; Behavior</h3><p>Controls for UI visibility and guarded download behavior in the gallery.</p><div class="iep-settings-stack"><label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label><label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label><label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Quick Hover Download</span></label><label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label><label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label><label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label></div></section></div><div class="iep-actions"><button id="iepSettingsDoneButton" class="iep-button iep-button-primary" type="button">Done</button></div></section></div>
         </div>
       `;
     }
@@ -2820,6 +3019,24 @@ async function registerCandidates(imageMap, candidates, context) {
 
   function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function escapeHtmlAttribute(value) {
+    return escapeHtml(value);
+  }
+
+  function shouldRescanForProfileChange(previousFilters, nextFilters) {
+    return String(previousFilters?.ignoredSelectors || "") !== String(nextFilters?.ignoredSelectors || "")
+      || Boolean(previousFilters?.preferLinkedOriginals) !== Boolean(nextFilters?.preferLinkedOriginals);
   }
 
   function clamp(value, min, max) {
