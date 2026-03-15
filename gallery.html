@@ -136,7 +136,7 @@
         </article>
       </section>
 
-      <section class="status-banner-row" aria-live="polite">
+      <section class="status-banner-row" aria-live="polite" hidden>
         <article id="statusBanner" class="status-banner surface" data-tone="default">
           <p id="statusMessage">Loading extraction results...</p>
         </article>
@@ -164,7 +164,7 @@
 
     <template id="imageCardTemplate">
       <article class="image-card surface" tabindex="0" role="button" aria-pressed="true">
-        <div class="card-checkbox" aria-hidden="true">?</div>
+        <div class="selected-indicator" aria-hidden="true"></div>
         <div class="card-media">
           <img loading="lazy" alt="">
           <span class="media-fallback" hidden>Preview unavailable</span>
@@ -187,6 +187,14 @@
         </div>
       </article>
     </template>
+
+    <div id="galleryLoadingOverlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.9); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white;">
+      <h2 id="loadingText">Processing Images...</h2>
+      <div style="width:300px; height:8px; background:#334155; border-radius:4px; margin-top:16px;">
+        <div id="loadingBar" style="width:0%; height:100%; background:#3b82f6; border-radius:4px; transition:width 0.1s;"></div>
+      </div>
+      <p id="loadingPercentage" style="margin-top:8px;">0%</p>
+    </div>
 
     <script src="gallery.js"></script>
   </body>

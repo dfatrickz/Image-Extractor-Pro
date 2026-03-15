@@ -109,6 +109,7 @@
       this.surferScrollFrame = 0;
       this.surferHoverRequestId = 0;
       this.hoverFlashTimer = 0;
+      this.mountPromise = null;
       this.pendingSurferPoint = null;
       this.state = {
         minimized: false,
@@ -158,6 +159,7 @@
       this.boundSurferMouseMove = this.handleSurferMouseMove.bind(this);
       this.boundSurferScroll = this.handleSurferScroll.bind(this);
       document.head?.querySelector?.("#iep-anti-overlay-css")?.remove();
+      this.storageReady = this.loadPersistedFilters();
     }
 
     createDefaultFormatState() {
@@ -167,48 +169,101 @@
       }, {});
     }
 
+    async loadPersistedFilters() {
+      try {
+        const result = await api.storage.local.get(["iepFilters"]);
+        if (!result?.iepFilters || typeof result.iepFilters !== "object") {
+          return;
+        }
+
+        const storedFilters = result.iepFilters;
+        this.state.filters = {
+          ...this.state.filters,
+          ...storedFilters,
+          formats: {
+            ...this.createDefaultFormatState(),
+            ...(storedFilters.formats && typeof storedFilters.formats === "object" ? storedFilters.formats : {})
+          }
+        };
+
+        if (typeof storedFilters.showFab === "boolean") {
+          this.state.showFab = storedFilters.showFab;
+        }
+      } catch (error) {
+        // Ignore storage failures and fall back to defaults.
+      }
+    }
+
+    persistFilters() {
+      const persistedFilters = {
+        ...this.state.filters,
+        showFab: this.state.showFab
+      };
+
+      void api.storage.local.set({
+        iepFilters: persistedFilters
+      });
+    }
+
     toggle() {
       if (!this.host) {
-        this.mountUi();
-        this.openPanel();
+        void this.openPanel();
         return;
       }
 
       if (this.state.minimized) {
-        this.openPanel();
+        void this.openPanel();
         return;
       }
 
       this.minimizePanel();
     }
 
-    mountUi() {
+    async mountUi() {
       if (this.host?.isConnected) {
         return;
       }
 
-      document.getElementById(UI_HOST_ID)?.remove();
+      if (this.mountPromise) {
+        await this.mountPromise;
+        return;
+      }
 
-      this.host = document.createElement("div");
-      this.host.id = UI_HOST_ID;
-      this.host.style.all = "initial";
-      this.host.style.position = "fixed";
-      this.host.style.inset = "0";
-      this.host.style.zIndex = "2147483647";
-      this.host.style.pointerEvents = "none";
+      this.mountPromise = (async () => {
+        await this.storageReady;
+        if (this.host?.isConnected) {
+          return;
+        }
 
-      this.shadowRoot = this.host.attachShadow({ mode: "open" });
-      this.shadowRoot.innerHTML = this.getTemplate();
-      document.documentElement.appendChild(this.host);
+        document.getElementById(UI_HOST_ID)?.remove();
 
-      this.cacheElements();
-      this.renderFormatOptions();
-      this.attachUiEvents();
-      document.addEventListener("mousemove", this.boundSurferMouseMove, true);
-      document.addEventListener("scroll", this.boundSurferScroll, true);
-      window.addEventListener("resize", this.boundResize, { passive: true });
-      this.syncFloatingPosition();
-      this.render();
+        this.host = document.createElement("div");
+        this.host.id = UI_HOST_ID;
+        this.host.style.all = "initial";
+        this.host.style.position = "fixed";
+        this.host.style.inset = "0";
+        this.host.style.zIndex = "2147483647";
+        this.host.style.pointerEvents = "none";
+
+        this.shadowRoot = this.host.attachShadow({ mode: "open" });
+        this.shadowRoot.innerHTML = this.getTemplate();
+        document.documentElement.appendChild(this.host);
+
+        this.cacheElements();
+        this.renderFormatOptions();
+        this.attachUiEvents();
+        document.addEventListener("mousemove", this.boundSurferMouseMove, true);
+        document.addEventListener("scroll", this.boundSurferScroll, true);
+        window.addEventListener("resize", this.boundResize, { passive: true });
+        this.syncFloatingPosition();
+        this.render();
+      })();
+
+      try {
+        await this.mountPromise;
+      } finally {
+        this.mountPromise = null;
+      }
     }
 
     cacheElements() {
@@ -263,7 +318,7 @@
           return;
         }
 
-        this.openPanel();
+        void this.openPanel();
       });
 
       this.elements.fabGrip.addEventListener("pointerdown", (event) => {
@@ -412,8 +467,8 @@
     closeSettingsModal() {
       this.toggleSettingsModal(false);
     }
-    openPanel() {
-      this.mountUi();
+    async openPanel() {
+      await this.mountUi();
       this.state.minimized = false;
       this.render();
     }
@@ -587,6 +642,7 @@
       this.state.filters.ignoredSelectors = String(this.elements.ignoredSelectorsInput.value || "").trim();
       this.state.filters.preferLinkedOriginals = Boolean(this.elements.preferLinkedOriginalsCheckbox.checked);
       this.state.filters.formats = readFormatStateFromUi(this.shadowRoot, this.createDefaultFormatState());
+      this.persistFilters();
 
       if (options.rescan && this.state.selectedContainer && this.state.selectedContainer.isConnected) {
         void this.scanSelectedContainer();
@@ -994,6 +1050,18 @@
       }
 
       if (!this.state.filters.hoverDownloadEnabled || this.state.selectionMode || !point) {
+        this.hideSurferHoverButton();
+        return;
+      }
+
+      const hitElements = document.elementsFromPoint(point.x, point.y);
+      if (hitElements.some((element) => element instanceof Element && (
+        element.id === UI_HOST_ID
+          || element.id === "iepShell"
+          || element.closest?.(".iep-shell")
+          || element.closest?.("#iepSettingsModal")
+          || element.closest?.(".iep-panel")
+      ))) {
         this.hideSurferHoverButton();
         return;
       }

@@ -562,16 +562,13 @@ textarea::placeholder {
   opacity: 0.6;
 }
 
-.card-checkbox {
+.selected-indicator {
   align-items: center;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--border-strong);
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.24);
   border-radius: 999px;
   box-shadow: var(--shadow-soft);
-  color: transparent;
   display: inline-flex;
-  font-size: 0.95rem;
-  font-weight: 700;
   height: 30px;
   justify-content: center;
   position: absolute;
@@ -580,10 +577,21 @@ textarea::placeholder {
   width: 30px;
 }
 
-.image-card.is-selected .card-checkbox {
+.selected-indicator svg {
+  display: block;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.image-card.is-selected .selected-indicator {
   background: var(--accent);
   border-color: transparent;
-  color: #ffffff;
+}
+
+.image-card.is-selected .selected-indicator svg {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .card-media {

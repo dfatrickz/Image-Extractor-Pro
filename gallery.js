@@ -90,6 +90,10 @@ const duplicateStatusBannerElement = document.getElementById("duplicateStatusBan
 const duplicateStatusMessageElement = document.getElementById("duplicateStatusMessage");
 const duplicateToggleWrapElement = document.getElementById("duplicateToggleWrap");
 const duplicateToggleElement = document.getElementById("duplicateToggle");
+const galleryLoadingOverlayElement = document.getElementById("galleryLoadingOverlay");
+const loadingTextElement = document.getElementById("loadingText");
+const loadingBarElement = document.getElementById("loadingBar");
+const loadingPercentageElement = document.getElementById("loadingPercentage");
 const emptyStateElement = document.getElementById("emptyState");
 const emptyStateTitleElement = document.getElementById("emptyStateTitle");
 const emptyStateMessageElement = document.getElementById("emptyStateMessage");
@@ -111,6 +115,9 @@ const folderNameInput = document.getElementById("folderNameInput");
 const downloadModeSummary = document.getElementById("downloadModeSummary");
 const saveModeHint = document.getElementById("saveModeHint");
 const imageCardTemplate = document.getElementById("imageCardTemplate");
+const SELECTED_INDICATOR_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
+let loadingOverlayFrame = 0;
+let pendingLoadingOverlayState = null;
 
 const state = {
   sessionId: new URLSearchParams(window.location.search).get("session") || "",
@@ -161,6 +168,7 @@ async function initialize() {
   state.isAnalyzingDuplicates = false;
   state.showDuplicates = false;
   state.duplicateCount = 0;
+  showLoadingOverlay("Processing Images...", 0);
   setStatus("Loading extraction results...", "default");
   setControlsDisabled(true);
   updateDownloadControls();
@@ -201,6 +209,7 @@ async function initialize() {
 
     if (state.images.length) {
       state.isAnalyzingDuplicates = true;
+      queueLoadingOverlayUpdate(0, "Scanning for duplicates...");
       setStatus(
         `Loaded ${state.images.length} extracted image${state.images.length === 1 ? "" : "s"}. Detecting duplicates...`,
         "default"
@@ -227,6 +236,8 @@ async function initialize() {
     applyTheme(state.downloadPreferences.theme);
     render();
     setStatus(error.message || "Could not load the extraction gallery.", "error");
+  } finally {
+    hideLoadingOverlay();
   }
 }
 
@@ -360,6 +371,7 @@ function renderGrid(matchingImages) {
 
   matchingImages.forEach((image) => {
     const card = imageCardTemplate.content.firstElementChild.cloneNode(true);
+    const selectedIndicator = card.querySelector(".selected-indicator");
     const previewImage = card.querySelector("img");
     const mediaFallback = card.querySelector(".media-fallback");
     const formatPill = card.querySelector(".format-pill");
@@ -375,6 +387,9 @@ function renderGrid(matchingImages) {
     card.classList.toggle("is-selected", image.selected);
     card.classList.toggle("is-duplicate", Boolean(image.isDuplicate));
     card.setAttribute("aria-pressed", image.selected ? "true" : "false");
+    if (selectedIndicator) {
+      selectedIndicator.innerHTML = SELECTED_INDICATOR_SVG;
+    }
 
     previewImage.hidden = false;
     mediaFallback.hidden = true;
@@ -534,13 +549,14 @@ async function detectDuplicates(images) {
     isDuplicate: false,
     duplicateReason: ""
   }));
-
-  await flagUrlBaseDuplicates(nextImages);
-  await flagVisualDuplicates(nextImages);
+  queueLoadingOverlayUpdate(0, "Scanning for duplicates...");
+  await flagUrlBaseDuplicates(nextImages, createPhaseProgressReporter(0, 50, Math.max(nextImages.length, 1)));
+  await flagVisualDuplicates(nextImages, createPhaseProgressReporter(50, 100, Math.max(nextImages.length, 1)));
+  queueLoadingOverlayUpdate(100, "Scanning for duplicates...");
   return nextImages;
 }
 
-async function flagUrlBaseDuplicates(images) {
+async function flagUrlBaseDuplicates(images, reportProgress = () => {}) {
   const groups = new Map();
 
   images.forEach((image) => {
@@ -556,10 +572,12 @@ async function flagUrlBaseDuplicates(images) {
     groups.get(baseUrl).push(image);
   });
 
-  let processedGroups = 0;
+  let processedImages = 0;
 
   for (const group of groups.values()) {
     if (group.length < 2) {
+      processedImages += group.length;
+      reportProgress(processedImages);
       continue;
     }
 
@@ -569,14 +587,15 @@ async function flagUrlBaseDuplicates(images) {
       sorted[index].duplicateReason = "url-base";
     }
 
-    processedGroups += 1;
-    if (processedGroups % 20 === 0) {
+    processedImages += group.length;
+    reportProgress(processedImages);
+    if (processedImages % 20 === 0) {
       await yieldToBrowser();
     }
   }
 }
 
-async function flagVisualDuplicates(images) {
+async function flagVisualDuplicates(images, reportProgress = () => {}) {
   const aspectGroups = new Map();
 
   images.forEach((image) => {
@@ -597,9 +616,12 @@ async function flagVisualDuplicates(images) {
   });
 
   const hashCache = new Map();
+  let processedImages = 0;
 
   for (const group of aspectGroups.values()) {
     if (group.length < 2) {
+      processedImages += group.length;
+      reportProgress(processedImages);
       continue;
     }
 
@@ -617,6 +639,8 @@ async function flagVisualDuplicates(images) {
       })));
 
       hashedCandidates.push(...batchResults);
+      processedImages += batch.length;
+      reportProgress(processedImages);
       await yieldToBrowser();
     }
 
@@ -660,6 +684,16 @@ async function flagVisualDuplicates(images) {
       }
     }
   }
+}
+
+function createPhaseProgressReporter(startPercent, endPercent, total) {
+  const safeTotal = Math.max(1, total);
+  return (processed) => {
+    const boundedProcessed = Math.min(Math.max(0, processed), safeTotal);
+    const completion = boundedProcessed / safeTotal;
+    const percent = Math.round(startPercent + ((endPercent - startPercent) * completion));
+    queueLoadingOverlayUpdate(percent, "Scanning for duplicates...");
+  };
 }
 
 function compareImageQualityDesc(left, right) {
@@ -1268,6 +1302,75 @@ function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages
 function setStatus(message, tone) {
   statusMessageElement.textContent = message;
   statusBannerElement.dataset.tone = tone;
+}
+
+function showLoadingOverlay(text, percent) {
+  if (!galleryLoadingOverlayElement) {
+    return;
+  }
+
+  galleryLoadingOverlayElement.style.display = "flex";
+  applyLoadingOverlayState(text, percent);
+}
+
+function queueLoadingOverlayUpdate(percent, text) {
+  if (!galleryLoadingOverlayElement) {
+    return;
+  }
+
+  pendingLoadingOverlayState = {
+    percent: clampLoadingPercent(percent),
+    text: text || "Processing Images..."
+  };
+  galleryLoadingOverlayElement.style.display = "flex";
+
+  if (loadingOverlayFrame) {
+    return;
+  }
+
+  loadingOverlayFrame = window.requestAnimationFrame(() => {
+    loadingOverlayFrame = 0;
+    if (!pendingLoadingOverlayState) {
+      return;
+    }
+
+    applyLoadingOverlayState(pendingLoadingOverlayState.text, pendingLoadingOverlayState.percent);
+    pendingLoadingOverlayState = null;
+  });
+}
+
+function hideLoadingOverlay() {
+  if (!galleryLoadingOverlayElement) {
+    return;
+  }
+
+  if (loadingOverlayFrame) {
+    window.cancelAnimationFrame(loadingOverlayFrame);
+    loadingOverlayFrame = 0;
+  }
+
+  pendingLoadingOverlayState = null;
+  galleryLoadingOverlayElement.style.display = "none";
+}
+
+function applyLoadingOverlayState(text, percent) {
+  const safePercent = clampLoadingPercent(percent);
+
+  if (loadingTextElement) {
+    loadingTextElement.textContent = text || "Processing Images...";
+  }
+
+  if (loadingBarElement) {
+    loadingBarElement.style.width = `${safePercent}%`;
+  }
+
+  if (loadingPercentageElement) {
+    loadingPercentageElement.textContent = `${safePercent}%`;
+  }
+}
+
+function clampLoadingPercent(percent) {
+  return Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
 }
 
 function applyTheme(theme) {
