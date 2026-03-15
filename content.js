@@ -123,6 +123,8 @@
         scannedImages: [],
         previewImages: [],
         progressVisible: false,
+        progressPercent: 0,
+        progressText: "Initializing scan...",
         statusMessage: "Run a page extract or select an area, then review the match count before opening the gallery.",
         statusTone: "default",
         filters: {
@@ -302,10 +304,13 @@
         reviewButton: this.shadowRoot.getElementById("iepReviewButton"),
         statusBanner: this.shadowRoot.getElementById("iepStatus"),
         statusMessage: this.shadowRoot.getElementById("iepStatusMessage"),
+        scanProgressWrapper: this.shadowRoot.getElementById("iepScanProgressWrapper"),
+        scanProgressBar: this.shadowRoot.getElementById("iepScanProgressBar"),
+        scanStatusText: this.shadowRoot.getElementById("iepScanStatusText"),
+        scanPercentText: this.shadowRoot.getElementById("iepScanPercentText"),
         selectionLabel: this.shadowRoot.getElementById("iepSelectionLabel"),
         previewCount: this.shadowRoot.getElementById("iepPreviewCount"),
         previewMeta: this.shadowRoot.getElementById("iepPreviewMeta"),
-        progressLine: this.shadowRoot.getElementById("iepProgress"),
         surferHoverButton: this.shadowRoot.getElementById("iepSurferHoverBtn"),
         outline: this.shadowRoot.getElementById("iepSelectionOutline")
       };
@@ -549,7 +554,7 @@
       this.elements.preferLinkedOriginalsCheckbox.checked = Boolean(this.state.filters.preferLinkedOriginals);
       this.elements.statusBanner.dataset.tone = this.state.statusTone;
       this.elements.statusMessage.textContent = this.state.statusMessage;
-      this.elements.progressLine.hidden = !this.state.progressVisible;
+      this.applyScanProgressUi();
       this.elements.selectionLabel.textContent = this.getScopeLabelText();
       this.elements.previewCount.textContent = this.getPreviewCountText();
       this.elements.previewMeta.textContent = hasScope
@@ -624,6 +629,38 @@
       this.state.statusMessage = message;
       this.state.statusTone = tone;
       this.render();
+    }
+
+    showScanProgress(statusText = "Initializing scan...", percent = 0) {
+      this.state.progressVisible = true;
+      this.state.progressText = statusText;
+      this.state.progressPercent = clamp(Math.round(Number(percent) || 0), 0, 100);
+      this.applyScanProgressUi();
+    }
+
+    updateScanProgress(percent, statusText = this.state.progressText) {
+      this.state.progressVisible = true;
+      this.state.progressText = statusText;
+      this.state.progressPercent = clamp(Math.round(Number(percent) || 0), 0, 100);
+      this.applyScanProgressUi();
+    }
+
+    hideScanProgress() {
+      this.state.progressVisible = false;
+      this.state.progressPercent = 0;
+      this.state.progressText = "Initializing scan...";
+      this.applyScanProgressUi();
+    }
+
+    applyScanProgressUi() {
+      if (!this.elements.scanProgressWrapper || !this.elements.scanProgressBar || !this.elements.scanStatusText || !this.elements.scanPercentText) {
+        return;
+      }
+
+      this.elements.scanProgressWrapper.style.display = this.state.progressVisible ? "block" : "none";
+      this.elements.scanProgressBar.style.width = `${this.state.progressPercent}%`;
+      this.elements.scanStatusText.textContent = this.state.progressText || "Initializing scan...";
+      this.elements.scanPercentText.textContent = `${this.state.progressPercent}%`;
     }
 
     updateFiltersFromInputs(options = {}) {
@@ -868,8 +905,11 @@
       this.clearPreviewRefreshTimer();
       this.state.busy = true;
       this.state.progressVisible = true;
+      this.state.progressPercent = 0;
+      this.state.progressText = "Parsing DOM...";
       this.state.scannedImages = [];
       this.state.previewImages = [];
+      this.showScanProgress("Parsing DOM...", 0);
       this.setStatus(`Scanning ${this.state.selectedContainerLabel}...`, "default");
       this.render();
 
@@ -880,6 +920,9 @@
           this.state.filters,
           (message, tone = "info") => {
             this.setStatus(message, tone);
+          },
+          (percent, statusText) => {
+            this.updateScanProgress(percent, statusText);
           }
         );
         this.state.scannedImages = extractedImages.map((image, index) => ({
@@ -895,6 +938,7 @@
       } finally {
         this.state.busy = false;
         this.state.progressVisible = false;
+        this.hideScanProgress();
         this.render();
       }
     }
@@ -1357,7 +1401,6 @@
           .iep-status[data-tone="error"] { background: var(--iep-error-bg); border-color: var(--iep-error-border); color: var(--iep-error-text); }
           .iep-status[data-tone="info"] { background: var(--iep-info-bg); border-color: var(--iep-info-border); color: var(--iep-info-text); }
           .iep-status p { margin: 0; font-size: 13px; line-height: 1.5; }
-          .iep-progress-line { height: 2px; background: #2563eb; margin-top: 8px; border-radius: 2px; animation: iep-loading 1.5s infinite linear; background-size: 200% 100%; background-image: linear-gradient(to right, transparent 50%, #2563eb 50%); }
           .iep-settings-modal { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; }
           .iep-settings-backdrop { position: absolute; inset: 0; background: var(--iep-backdrop); }
           .iep-settings-dialog { position: relative; width: min(1000px, calc(100vw - 48px)); max-height: min(600px, calc(100vh - 48px)); display: grid; gap: 16px; padding: 20px; border-radius: 22px; background: var(--iep-surface-strong); border: 1px solid var(--iep-border); box-shadow: 0 32px 80px rgba(15, 23, 42, 0.32); overflow: auto; }
@@ -1376,17 +1419,16 @@
           .iep-surfer-hover-btn svg { pointer-events: none; }
           .iep-surfer-hover-btn.is-success { background: #16a34a; }
           .iep-selection-outline { position: fixed; border: 2px solid var(--iep-accent); background: var(--iep-accent-soft); box-shadow: 0 0 0 9999px var(--iep-selection-overlay); border-radius: 8px; pointer-events: none; }
-          @keyframes iep-loading { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
           @media (max-width: 860px) { .iep-settings-grid { grid-template-columns: minmax(0, 1fr); } }
           [hidden] { display: none !important; }
         </style>
         <div id="iepShell" class="iep-shell" data-theme="system">
           <button id="iepFab" class="iep-fab" type="button" aria-label="Open Image Extractor Pro" hidden><span id="iepFabGrip" class="iep-fab-grip" aria-hidden="true"></span><span class="iep-fab-icon" aria-hidden="true"></span></button>
           <section id="iepPanel" class="iep-panel" role="dialog" aria-modal="false" aria-label="Image Extractor Pro panel">
-            <header class="iep-panel-header"><div><p class="iep-kicker">Image Extractor Pro</p><h1 class="iep-title">Scoped Image Extraction</h1><p class="iep-subtitle">Preview matches first, then open the gallery only after confirmation.</p></div><div class="iep-header-controls"><div class="iep-window-actions"><button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false">&#9881;</button><button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button><button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button></div></div></header>
+            <header class="iep-panel-header"><div><p class="iep-kicker">Image Extractor Pro</p><h1 class="iep-title">Scoped Image Extraction</h1><p class="iep-subtitle">Review images before opening the full gallery.</p></div><div class="iep-header-controls"><div class="iep-window-actions"><button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false">&#9881;</button><button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button><button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button></div></div></header>
             <div class="iep-body">
-              <section class="iep-card"><div class="iep-action-grid"><button id="iepExtractAllButton" class="iep-button iep-button-primary" type="button">Extract All from Page</button><button id="iepSelectAreaButton" class="iep-button iep-button-secondary" type="button">Select Area to Extract</button></div><div id="iepPreviewContainer" class="iep-preview-container"><div class="iep-preview-inner"><div class="iep-preview-stack"><p id="iepSelectionLabel" class="iep-selection-label">No extraction scope selected yet.</p><p id="iepPreviewCount" class="iep-preview-count">Found 0 images matching your filters.</p><p id="iepPreviewMeta" class="iep-preview-meta">Use one of the extract actions above to preview the result count first.</p><section id="iepStatus" class="iep-status" data-tone="default" aria-live="polite"><p id="iepStatusMessage">Run a page extract or select an area, then review the match count before opening the gallery.</p><div id="iepProgress" class="iep-progress-line" hidden></div></section><div class="iep-actions"><button id="iepCancelButton" class="iep-button iep-button-secondary" type="button" hidden>Clear Preview</button><button id="iepReviewButton" class="iep-button iep-button-primary" type="button" hidden>Review &amp; Download</button></div></div></div></div></section>
-              <section class="iep-card"><h2>Filters</h2><p>Always-visible filters for size, formats, and origin.</p><div class="iep-filter-grid"><label class="iep-field"><span>Minimum Width (px)</span><input id="iepMinWidth" type="number" min="0" step="10" value="150"></label><label class="iep-field"><span>Minimum Height (px)</span><input id="iepMinHeight" type="number" min="0" step="10" value="150"></label></div><div id="iepFormatOptions" class="iep-format-grid" aria-label="Format filters"></div><div class="iep-inline-group"><span class="iep-field-label">Extra supported formats</span><div id="iepAdvancedFormatOptions" class="iep-format-grid iep-format-grid-compact" aria-label="Advanced format filters"></div></div></section>
+              <section class="iep-card"><div class="iep-action-grid"><button id="iepExtractAllButton" class="iep-button iep-button-primary" type="button">Extract All from Page</button><button id="iepSelectAreaButton" class="iep-button iep-button-secondary" type="button">Select Area to Extract</button></div><div id="iepPreviewContainer" class="iep-preview-container"><div class="iep-preview-inner"><div class="iep-preview-stack"><div id="iepScanProgressWrapper" style="display: none; padding: 12px; background: var(--iep-bg-secondary, #1e293b); border-radius: 6px; margin-bottom: 10px;"><div style="width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden;"><div id="iepScanProgressBar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.1s ease-out;"></div></div><div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #94a3b8;"><span id="iepScanStatusText">Initializing scan...</span><span id="iepScanPercentText">0%</span></div></div><p id="iepSelectionLabel" class="iep-selection-label">No extraction scope selected yet.</p><p id="iepPreviewCount" class="iep-preview-count">Found 0 images matching your filters.</p><p id="iepPreviewMeta" class="iep-preview-meta">Use one of the extract actions above to preview the result count first.</p><section id="iepStatus" class="iep-status" data-tone="default" aria-live="polite"><p id="iepStatusMessage">Run a page extract or select an area, then review the match count before opening the gallery.</p></section><div class="iep-actions"><button id="iepCancelButton" class="iep-button iep-button-secondary" type="button" hidden>Clear Preview</button><button id="iepReviewButton" class="iep-button iep-button-primary" type="button" hidden>Review &amp; Download</button></div></div></div></div></section>
+              <section class="iep-card"><h2>Filters</h2><p>Image search filters for size &amp; formats</p><div class="iep-filter-grid"><label class="iep-field"><span>Minimum Width (px)</span><input id="iepMinWidth" type="number" min="0" step="10" value="150"></label><label class="iep-field"><span>Minimum Height (px)</span><input id="iepMinHeight" type="number" min="0" step="10" value="150"></label></div><div id="iepFormatOptions" class="iep-format-grid" aria-label="Format filters"></div><div class="iep-inline-group"><span class="iep-field-label">Extra supported formats</span><div id="iepAdvancedFormatOptions" class="iep-format-grid iep-format-grid-compact" aria-label="Advanced format filters"></div></div></section>
               <details class="iep-details"><summary>Advanced Settings</summary><div class="iep-details-body"><label class="iep-field iep-field-full"><span>Ignore selectors or class fragments</span><input id="iepIgnoredSelectors" type="text" placeholder=".avatar, .logo, sponsor-card"></label><label class="iep-toggle-row"><input id="iepPreferLinkedOriginals" type="checkbox" checked><span>Prefer linked original image URLs when available</span></label></div></details>
             </div>
           </section>
@@ -1398,7 +1440,7 @@
     }
   }
 
-  async function extractImagesFromScope(root, sourceProbeCache, filters, onProgress) {
+  async function extractImagesFromScope(root, sourceProbeCache, filters, onProgress, onScanProgress) {
     const snapshot = captureScrollSnapshot(root);
 
     try {
@@ -1410,9 +1452,11 @@
         await warmUpLazyContent(root);
       }
       onProgress?.("Parsing DOM for image sources...", "info");
+      onScanProgress?.(0, "Parsing DOM...");
       const images = await collectScopeImages(root, filters);
       onProgress?.("Fetching metadata and filtering...", "info");
-      await enrichImagesWithSourceMetadata(images, sourceProbeCache);
+      onScanProgress?.(0, "Filtering and enriching images...");
+      await enrichImagesWithSourceMetadata(images, sourceProbeCache, onScanProgress);
       return dedupeImages(images).sort((left, right) => getImageArea(right) - getImageArea(left));
     } finally {
       restoreScrollSnapshot(snapshot);
@@ -2312,7 +2356,16 @@ async function registerCandidates(imageMap, candidates, context) {
     return unique;
   }
 
-  async function enrichImagesWithSourceMetadata(images, sourceProbeCache) {
+  async function enrichImagesWithSourceMetadata(images, sourceProbeCache, onProgress) {
+    const total = images.length;
+    let processed = 0;
+
+    if (!total) {
+      onProgress?.(100, "Filtering and enriching images...");
+      return;
+    }
+
+    onProgress?.(0, "Filtering and enriching images...");
     await runWithConcurrency(images, PREVIEW_SCAN_CONCURRENCY, async (image) => {
       const metadata = await probeSourceMetadata(image.url, image.format, sourceProbeCache);
       if (metadata.format && !image.format) {
@@ -2326,6 +2379,10 @@ async function registerCandidates(imageMap, candidates, context) {
         image.sourceHeight = Math.max(image.sourceHeight || 0, metadata.height);
         image.naturalHeight = Math.max(image.naturalHeight || 0, metadata.height);
       }
+
+      processed += 1;
+      const percent = Math.round((processed / total) * 100);
+      onProgress?.(percent, "Filtering and enriching images...");
     });
   }
 

@@ -112,12 +112,14 @@ const qualityInput = document.getElementById("qualityInput");
 const qualityValue = document.getElementById("qualityValue");
 const saveModeSelect = document.getElementById("saveModeSelect");
 const folderNameInput = document.getElementById("folderNameInput");
+const gallerySortSelect = document.getElementById("iepGallerySort");
 const downloadModeSummary = document.getElementById("downloadModeSummary");
 const saveModeHint = document.getElementById("saveModeHint");
 const imageCardTemplate = document.getElementById("imageCardTemplate");
 const SELECTED_INDICATOR_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
 let loadingOverlayFrame = 0;
 let pendingLoadingOverlayState = null;
+let originalOrder = [];
 
 const state = {
   sessionId: new URLSearchParams(window.location.search).get("session") || "",
@@ -144,6 +146,7 @@ qualityInput.addEventListener("input", updateDownloadControls);
 saveModeSelect.addEventListener("change", updateDownloadControls);
 folderNameInput.addEventListener("input", updateDownloadControls);
 duplicateToggleElement.addEventListener("change", handleDuplicateToggle);
+gallerySortSelect?.addEventListener("change", render);
 
 api.downloads.onChanged.addListener((delta) => {
   if (!delta.id || !delta.state?.current) {
@@ -196,6 +199,7 @@ async function initialize() {
           clientId: `${index}-${hashString(image.url || String(index))}`
         }))
       : [];
+    originalOrder = [...state.images];
 
     const preferredFolder = normalizeRelativePath(
       state.downloadPreferences.subfolderName
@@ -242,7 +246,7 @@ async function initialize() {
 }
 
 function render() {
-  const matchingImages = getMatchingImages();
+  const matchingImages = getSortedImages(getMatchingImages());
   const visibleImages = getVisibleImages(matchingImages);
   const selectedImages = state.images.filter((image) => image.selected);
   const visibleFormats = new Set(visibleImages.map((image) => getFormatKey(image)));
@@ -384,6 +388,10 @@ function renderGrid(matchingImages) {
     const openLink = card.querySelector(".card-open-link");
 
     card.dataset.clientId = image.clientId;
+    card.dataset.url = image.url || "";
+    card.dataset.width = String(getBestWidth(image));
+    card.dataset.height = String(getBestHeight(image));
+    card.dataset.orderIndex = String(getOriginalOrderIndex(image));
     card.classList.toggle("is-selected", image.selected);
     card.classList.toggle("is-duplicate", Boolean(image.isDuplicate));
     card.setAttribute("aria-pressed", image.selected ? "true" : "false");
@@ -418,6 +426,29 @@ function renderGrid(matchingImages) {
   });
 
   galleryGridElement.appendChild(fragment);
+}
+
+function getSortedImages(images) {
+  const sortMode = gallerySortSelect?.value || "default";
+  if (sortMode === "default") {
+    return [...images].sort((left, right) => getOriginalOrderIndex(left) - getOriginalOrderIndex(right));
+  }
+
+  const sorted = [...images].sort((left, right) => {
+    const areaDifference = getImageScore(left) - getImageScore(right);
+    if (areaDifference !== 0) {
+      return sortMode === "desc" ? -areaDifference : areaDifference;
+    }
+
+    return getOriginalOrderIndex(left) - getOriginalOrderIndex(right);
+  });
+
+  return sorted;
+}
+
+function getOriginalOrderIndex(image) {
+  const index = originalOrder.findIndex((entry) => entry.clientId === image.clientId || entry.url === image.url);
+  return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
 }
 
 function getMatchingImages() {
@@ -1289,6 +1320,9 @@ function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages
   selectAllButton.disabled = disabled || noVisibleImages;
   deselectAllButton.disabled = disabled || state.images.length === 0;
   downloadButton.disabled = disabled || noSelectedImages;
+  if (gallerySortSelect) {
+    gallerySortSelect.disabled = disabled;
+  }
   minWidthInput.disabled = disabled;
   minHeightInput.disabled = disabled;
   formatFilterSelect.disabled = disabled;
