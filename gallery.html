@@ -21,14 +21,6 @@
         </div>
 
         <div class="toolbar">
-          <div class="iep-sort-container" style="display: flex; align-items: center; gap: 8px; margin-right: 16px;">
-            <label for="iepGallerySort" style="color: var(--text-main, #cbd5e1); font-size: 13px;">Sort:</label>
-            <select id="iepGallerySort" style="background: var(--bg-secondary, #1e293b); color: var(--text-main, #f8fafc); border: 1px solid var(--border-color, #334155); border-radius: 4px; padding: 4px 8px; font-size: 13px;">
-              <option value="default">Default Order</option>
-              <option value="desc">Largest Size First</option>
-              <option value="asc">Smallest Size First</option>
-            </select>
-          </div>
           <button id="selectAllButton" class="secondary-button" type="button">Select All</button>
           <button id="deselectAllButton" class="ghost-button" type="button">Unselect All</button>
           <button id="downloadButton" class="primary-button" type="button">
@@ -144,30 +136,41 @@
         </article>
       </section>
 
-      <section class="status-banner-row" aria-live="polite" hidden>
-        <article id="statusBanner" class="status-banner surface" data-tone="default">
-          <p id="statusMessage">Loading extraction results...</p>
-        </article>
-        <article id="duplicateStatusBanner" class="status-banner duplicate-status-banner surface" data-tone="default">
-          <div class="duplicate-status-layout">
-            <p id="duplicateStatusMessage">Scanning for duplicates...</p>
-            <label id="duplicateToggleWrap" class="switch" hidden>
-              <input id="duplicateToggle" type="checkbox" aria-label="Show duplicate images">
-              <span class="switch-slider" aria-hidden="true"></span>
-              <span class="switch-text">Show duplicates</span>
-            </label>
-          </div>
-        </article>
-      </section>
+      <div class="iep-gallery-content-box">
+        <section class="status-banner-row" aria-live="polite" hidden>
+          <article id="statusBanner" class="status-banner surface" data-tone="default">
+            <p id="statusMessage">Loading extraction results...</p>
+          </article>
+          <article id="duplicateStatusBanner" class="status-banner duplicate-status-banner surface" data-tone="default">
+            <div class="duplicate-status-layout">
+              <p id="duplicateStatusMessage">Scanning for duplicates...</p>
+              <label id="duplicateToggleWrap" class="switch" hidden>
+                <input id="duplicateToggle" type="checkbox" aria-label="Show duplicate images">
+                <span class="switch-slider" aria-hidden="true"></span>
+                <span class="switch-text">Show duplicates</span>
+              </label>
+            </div>
+          </article>
+        </section>
 
-      <section id="emptyState" class="empty-state surface" hidden>
-        <h2 id="emptyStateTitle">No qualifying images found</h2>
-        <p id="emptyStateMessage">
-          Try a richer media page, or rerun extraction after the page has fully loaded and lazy-loaded content is visible.
-        </p>
-      </section>
+        <div class="iep-sort-container" style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; margin-bottom: 12px;">
+          <label for="iepGallerySort" style="color: var(--text-main, #cbd5e1); font-size: 13px;">Sort:</label>
+          <select id="iepGallerySort" style="background: var(--bg-secondary, #1e293b); color: var(--text-main, #f8fafc); border: 1px solid var(--border-color, #334155); border-radius: 4px; padding: 4px 8px; font-size: 13px;">
+            <option value="default">Default Order</option>
+            <option value="desc">Largest Size First</option>
+            <option value="asc">Smallest Size First</option>
+          </select>
+        </div>
 
-      <section id="galleryGrid" class="gallery-grid" aria-live="polite"></section>
+        <section id="emptyState" class="empty-state surface" hidden>
+          <h2 id="emptyStateTitle">No qualifying images found</h2>
+          <p id="emptyStateMessage">
+            Try a richer media page, or rerun extraction after the page has fully loaded and lazy-loaded content is visible.
+          </p>
+        </section>
+
+        <section id="galleryGrid" class="gallery-grid" aria-live="polite"></section>
+      </div>
     </main>
 
     <template id="imageCardTemplate">
