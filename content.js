@@ -1254,6 +1254,10 @@
     }
 
     handleSurferMouseMove(event) {
+      if (event.composedPath && event.composedPath().some((element) => element?.id === "iepSurferHoverBtn")) {
+        return;
+      }
+
       lastMouseX = event.clientX;
       lastMouseY = event.clientY;
       this.queueSurferHoverRefresh({
@@ -1262,7 +1266,11 @@
       });
     }
 
-    handleSurferScroll() {
+    handleSurferScroll(event) {
+      if (event.composedPath && event.composedPath().some((element) => element?.id === "iepSurferHoverBtn")) {
+        return;
+      }
+
       if (!this.state.filters.hoverDownloadEnabled) {
         this.hideSurferHoverButton();
         return;
@@ -1625,7 +1633,7 @@
           .iep-settings-dialog .iep-button { padding: 10px 12px; border-radius: 12px; }
           .iep-radio-group { display: grid; gap: 8px; }
           .iep-surfer-hover-btn { position: fixed; z-index: 2147483647; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: #2563eb; color: #ffffff; border: none; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); pointer-events: auto; }
-          .iep-surfer-hover-btn svg { pointer-events: none; }
+          #iepSurferHoverBtn svg, .iep-surfer-hover-btn svg { pointer-events: none; }
           .iep-surfer-hover-btn.is-success { background: #16a34a; }
           .iep-selection-outline { position: fixed; border: 2px solid var(--iep-accent); background: var(--iep-accent-soft); box-shadow: 0 0 0 9999px var(--iep-selection-overlay); border-radius: 8px; pointer-events: none; }
           @media (max-width: 860px) { .iep-settings-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -2064,6 +2072,10 @@ async function registerCandidates(imageMap, candidates, context) {
       return false;
     }
 
+    if (!isHoverVisibleTarget(element)) {
+      return false;
+    }
+
     const imageUrl = String(element.currentSrc || element.src || "");
     if (/spaceball|transparent|data:image\/gif/i.test(imageUrl)) {
       return false;
@@ -2086,63 +2098,77 @@ async function registerCandidates(imageMap, candidates, context) {
       return null;
     }
 
-    const elements = document.elementsFromPoint(clientX, clientY)
-      .filter((element) => element instanceof Element)
-      .filter((element) => !(
-        element.id === UI_HOST_ID
-        || element.id === "iepShell"
-        || element.classList?.contains("iep-shell")
-        || element.closest?.(`#${UI_HOST_ID}`)
-        || element.closest?.("#iepShell")
-        || element.closest?.(".iep-shell")
-      ));
+    const hitElements = Array.from(document.elementsFromPoint(clientX, clientY))
+      .filter((element) => element instanceof Element);
 
-    for (const element of elements) {
-      if (isValidTargetImage(element)) {
-        return element;
-      }
-
-      if (element instanceof HTMLPictureElement) {
-        const previewImage = element.querySelector("img");
-        if (isValidTargetImage(previewImage)) {
-          return previewImage;
-        }
-      }
-
-      const backgroundUrls = extractBackgroundUrls(element);
-      if (backgroundUrls.some((url) => url && !/spaceball|transparent|data:image\/gif/i.test(url))) {
-        return element;
-      }
-    }
-
-    const disableSiteControls = Boolean(window.__imageExtractorProContentController?.state?.filters?.disableSiteControls);
-    if (!disableSiteControls) {
+    if (hitElements.some((element) => (
+      element.id === "iepSurferHoverBtn"
+      || element.id === "iepShell"
+      || element.closest?.(".iep-shell")
+      || element.closest?.(".iep-panel")
+      || element.closest?.(".iep-modal")
+    ))) {
       return null;
     }
 
-    for (const element of elements.slice(0, 4)) {
-      if (!(element instanceof Element)) {
-        continue;
+    for (const element of hitElements) {
+      if (element.tagName === "IMG" && isValidTargetImage(element) && isHoverVisibleTarget(element)) {
+        return element;
+      }
+    }
+
+    const isInstagram = window.location.hostname.includes("instagram.com");
+
+    for (const element of hitElements) {
+      let images = Array.from(element.querySelectorAll("img"));
+      if (element.parentElement) {
+        images = images.concat(Array.from(element.parentElement.querySelectorAll("img")));
       }
 
-      const relatedImages = new Set([
-        ...Array.from(element.parentElement?.querySelectorAll?.("img") || []),
-        ...Array.from(element.querySelectorAll?.("img") || [])
-      ]);
+      for (const image of images) {
+        if (isInstagram) {
+          if (hitElements.includes(image)) {
+            if (isValidTargetImage(image) && isHoverVisibleTarget(image)) {
+              return image;
+            }
+          }
+        } else {
+          const rect = image.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) continue;
 
-      for (const image of relatedImages) {
-        if (!isValidTargetImage(image)) {
-          continue;
-        }
-
-        const rect = image.getBoundingClientRect();
-        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
-          return image;
+          if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+            if (isValidTargetImage(image) && isHoverVisibleTarget(image)) {
+              return image;
+            }
+          }
         }
       }
     }
 
     return null;
+  }
+
+  function isHoverVisibleTarget(element) {
+    if (!(element instanceof Element)) {
+      return false;
+    }
+
+    let currentElement = element;
+    while (currentElement && currentElement !== document.body && currentElement !== document.documentElement) {
+      const style = window.getComputedStyle(currentElement);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+        return false;
+      }
+
+      currentElement = currentElement.parentElement;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.right < 0 || rect.left > window.innerWidth) {
+      return false;
+    }
+
+    return true;
   }
 
   function getPreferredDownloadFormatScore(url) {
@@ -2195,26 +2221,35 @@ async function registerCandidates(imageMap, candidates, context) {
   }
 
   function applyFlickrExploit(url) {
-    if (!url || !url.includes("flickr.com")) {
-      return url;
-    }
+    if (!url || !url.includes("flickr.com")) return url;
 
+    // 1. Protection for already high-res URLs
+    if (/_([a-f0-9]+)_[kho]\.(?:jpg|png|gif)/i.test(url)) return url;
+
+    // 2. The Original Script Miner
     const idMatch = url.match(/\/(\d+)_[a-f0-9]+/i);
     if (idMatch) {
       const photoId = idMatch[1];
-      const scriptContent = Array.from(document.scripts).map((script) => script.textContent || "").join(" ");
-      const sizes = ["o", "k", "h", "b"];
+      const scriptContent = Array.from(document.scripts).map((script) => script.textContent).join(" ");
+      const sizes = ["o", "k", "h"]; // Original -> massive -> large
 
       for (const size of sizes) {
-        const regex = new RegExp(`"url":"([^"]+?${photoId}_[a-f0-9]+_${size}\\.(?:jpg|png|gif)[^"]*)"`, "i");
+        // Original regex targeting staticflickr domains inside the script tags
+        const regex = new RegExp(`([^"']+(?:live\\.staticflickr\\.com|farm[0-9]+\\.staticflickr\\.com)[^"']+?${photoId}_[a-f0-9]+_${size}\\.(?:jpg|png|gif)[^"']*)`, "i");
         const match = scriptContent.match(regex);
+
         if (match) {
-          return match[1].replace(/\\\//g, "/");
+          let finalUrl = match[1].replace(/\\\//g, "/");
+          if (finalUrl.startsWith("//")) {
+            finalUrl = "https:" + finalUrl;
+          }
+          return finalUrl;
         }
       }
     }
 
-    return url.replace(/_([a-f0-9]{10})(?:_[a-z])?\.([a-zA-Z]+)$/i, "_$1_b.$2");
+    // 3. The Original Fallback
+    return url.replace(/_([a-f0-9]{10})(?:_[a-z])?\.([a-zA-Z]+)(?:[?#].*)?$/i, "_$1_b.$2");
   }
 
   async function getBestImageUrl(element) {
