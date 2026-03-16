@@ -248,6 +248,55 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// FLICKR STEALTH WIRETAP
+// Watch for Flickr tabs loading or updating
+api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (tab.url && tab.url.includes("flickr.com") && changeInfo.status === "loading") {
+    // Safely inject the wiretap directly into the page's MAIN execution world
+    api.scripting.executeScript({
+      target: { tabId: tabId },
+      world: "MAIN",
+      func: setupFlickrHelper
+    }).catch(() => {});
+  }
+});
+
+// This function runs INSIDE the actual webpage's context
+function setupFlickrHelper() {
+  if (window.iepHelperActive) return;
+  window.iepHelperActive = true;
+
+  // 1. MODERN FETCH INTERCEPTOR
+  const originalFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const response = await originalFetch.apply(this, args);
+    try {
+      const clone = response.clone();
+      clone.text().then((text) => {
+        // Broadened check to ensure we don't miss oddly formatted JSON
+        if (text && text.includes("live.staticflickr.com")) {
+          window.postMessage({ type: "IEP_FLICKR_DATA_CACHED", payload: text }, "*");
+        }
+      }).catch(() => {});
+    } catch (e) {}
+    return response;
+  };
+
+  // 2. LEGACY XHR INTERCEPTOR (For Pagination & Group Pools)
+  const originalXHROpen = window.XMLHttpRequest.prototype.open;
+  window.XMLHttpRequest.prototype.open = function () {
+    this.addEventListener("load", function () {
+      try {
+        const text = this.responseText;
+        if (text && text.includes("live.staticflickr.com")) {
+          window.postMessage({ type: "IEP_FLICKR_DATA_CACHED", payload: text }, "*");
+        }
+      } catch (e) {}
+    });
+    return originalXHROpen.apply(this, arguments);
+  };
+}
+
 
 
 

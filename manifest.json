@@ -12,7 +12,8 @@
     "tabs"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "<all_urls>",
+    "*://*.flickr.com/*"
   ],
   "background": {
     "scripts": [

@@ -114,6 +114,7 @@ const qualityValue = document.getElementById("qualityValue");
 const saveModeSelect = document.getElementById("saveModeSelect");
 const folderNameInput = document.getElementById("folderNameInput");
 const gallerySortSelect = document.getElementById("iepGallerySort");
+const galleryDownloadModeSelect = document.getElementById("galleryDownloadModeSelect");
 const downloadModeSummary = document.getElementById("downloadModeSummary");
 const saveModeHint = document.getElementById("saveModeHint");
 const deleteModalElement = document.getElementById("iepDeleteModal");
@@ -137,7 +138,8 @@ const state = {
   downloadPreferences: createDefaultDownloadPreferences(),
   gallerySettings: {
     autoCheckDuplicates: true,
-    hideDeleteWarning: false
+    hideDeleteWarning: false,
+    downloadMode: "zip"
   },
   hasDuplicateCheckRun: false,
   pendingDelete: null
@@ -158,6 +160,10 @@ saveModeSelect.addEventListener("change", updateDownloadControls);
 folderNameInput.addEventListener("input", updateDownloadControls);
 duplicateToggleElement.addEventListener("change", handleDuplicateToggle);
 gallerySortSelect?.addEventListener("change", render);
+galleryDownloadModeSelect?.addEventListener("change", () => {
+  state.downloadPreferences.downloadMode = galleryDownloadModeSelect.value;
+  updateDownloadControls();
+});
 manualDupeCheckButton?.addEventListener("click", () => {
   void handleManualDuplicateCheck();
 });
@@ -211,6 +217,11 @@ async function initialize() {
     state.session = response.session;
     state.downloadPreferences = normalizeDownloadPreferences(response.session);
     applyTheme(state.downloadPreferences.theme);
+    const initialDownloadMode = state.downloadPreferences.downloadMode || state.gallerySettings.downloadMode;
+    state.downloadPreferences.downloadMode = initialDownloadMode;
+    if (galleryDownloadModeSelect) {
+      galleryDownloadModeSelect.value = initialDownloadMode;
+    }
     state.images = Array.isArray(response.session.images)
       ? response.session.images.map((image, index) => ({
           ...image,
@@ -235,12 +246,11 @@ async function initialize() {
     if (state.images.length) {
       if (state.gallerySettings.autoCheckDuplicates) {
         await runDuplicateCheck();
-        const uniqueCount = Math.max(state.images.length - state.duplicateCount, 0);
-        setStatus(`Loaded ${uniqueCount} unique image${uniqueCount === 1 ? "" : "s"}.`, "success");
+        setStatus(`Loaded ${state.images.length} images`, "success");
       } else {
         state.duplicateCount = 0;
         state.hasDuplicateCheckRun = false;
-        setStatus(`Loaded ${state.images.length} extracted image${state.images.length === 1 ? "" : "s"}.`, "success");
+        setStatus(`Loaded ${state.images.length} images`, "success");
       }
     } else {
       state.duplicateCount = 0;
@@ -308,10 +318,10 @@ function renderDuplicateStatus() {
     manualDupeCheckButton.textContent = state.hasDuplicateCheckRun ? "Check Again" : "Check for duplicates";
   }
 
-  if (!state.hasDuplicateCheckRun && !state.gallerySettings.autoCheckDuplicates) {
+  if (!state.hasDuplicateCheckRun) {
     duplicateStatusBannerElement.dataset.tone = "default";
     duplicateStatusBannerElement.classList.remove("has-duplicates");
-    duplicateStatusMessageElement.textContent = "";
+    duplicateStatusMessageElement.textContent = "Duplicates not checked";
     return;
   }
 
@@ -583,10 +593,6 @@ function toggleCardSelection(clientId) {
 function handleDuplicateToggle() {
   state.showDuplicates = Boolean(duplicateToggleElement.checked);
   render();
-  setStatus(
-    state.showDuplicates ? "Duplicate images are now visible in the gallery." : "Duplicate images are hidden from the gallery.",
-    "default"
-  );
 }
 
 function setVisibleSelections(selected) {
@@ -632,15 +638,6 @@ async function handleManualDuplicateCheck() {
   }
 
   await runDuplicateCheck();
-
-  if (state.duplicateCount === 0) {
-    setStatus("No duplicates found in the current gallery.", "default");
-  } else {
-    setStatus(
-      `${state.duplicateCount} duplicate image${state.duplicateCount === 1 ? "" : "s"} flagged in the current gallery.`,
-      "default"
-    );
-  }
 }
 
 async function runDuplicateCheck() {
@@ -753,15 +750,24 @@ function matchesDeletionTarget(image, clientId, url) {
 }
 
 async function detectDuplicates(images) {
+  const currentScroll = window.scrollY || document.documentElement.scrollTop;
   const nextImages = images.map((image) => ({
     ...image,
     isDuplicate: false,
     duplicateReason: ""
   }));
   queueLoadingOverlayUpdate(0, "Scanning for duplicates...");
-  await flagUrlBaseDuplicates(nextImages, createPhaseProgressReporter(0, 50, Math.max(nextImages.length, 1)));
-  await flagVisualDuplicates(nextImages, createPhaseProgressReporter(50, 100, Math.max(nextImages.length, 1)));
+  await flagUrlBaseDuplicates(nextImages);
+  const visualWorkTotal = Math.max(getVisualDuplicateWorkCount(nextImages), 1);
+  await flagVisualDuplicates(nextImages, (processed) => {
+    const boundedProcessed = Math.min(Math.max(0, processed), visualWorkTotal);
+    const percent = Math.round((boundedProcessed / visualWorkTotal) * 100);
+    queueLoadingOverlayUpdate(percent, "Scanning for duplicates...");
+  });
   queueLoadingOverlayUpdate(100, "Scanning for duplicates...");
+  window.requestAnimationFrame(() => {
+    window.scrollTo(0, currentScroll);
+  });
   return nextImages;
 }
 
@@ -903,6 +909,24 @@ function createPhaseProgressReporter(startPercent, endPercent, total) {
     const percent = Math.round(startPercent + ((endPercent - startPercent) * completion));
     queueLoadingOverlayUpdate(percent, "Scanning for duplicates...");
   };
+}
+
+function getVisualDuplicateWorkCount(images) {
+  let total = 0;
+
+  images.forEach((image) => {
+    if (image.isDuplicate) {
+      return;
+    }
+
+    if (!getAspectRatioBucket(image)) {
+      return;
+    }
+
+    total += 1;
+  });
+
+  return total;
 }
 
 function compareImageQualityDesc(left, right) {
@@ -1417,13 +1441,14 @@ function getDownloadOptions() {
       || state.session?.pageTitle
       || "Extracted Images"
   ) || "Extracted Images";
+  const activeDownloadMode = galleryDownloadModeSelect?.value || state.downloadPreferences.downloadMode;
 
   return {
     outputFormat: outputFormatSelect.value,
     quality: Number.parseFloat(qualityInput.value || "0.92") || 0.92,
     saveMode: saveModeSelect.value,
     folderPath: resolvedFolderPath,
-    downloadMode: state.downloadPreferences.downloadMode,
+    downloadMode: activeDownloadMode,
     rateLimitMs: state.downloadPreferences.rateLimitMs,
     individualDownloadWarningThreshold: state.downloadPreferences.individualDownloadWarningThreshold,
     zipFilename: ensureZipFilename(resolvedFolderPath)
@@ -1461,7 +1486,8 @@ function updateDownloadControls() {
   const outputFormat = outputFormatSelect.value;
   const qualityPercent = Math.round((Number.parseFloat(qualityInput.value || "0.92") || 0.92) * 100);
   const controlsDisabled = state.images.length === 0 || state.isDownloading;
-  const downloadMode = state.downloadPreferences.downloadMode;
+  const downloadMode = galleryDownloadModeSelect?.value || state.downloadPreferences.downloadMode;
+  state.downloadPreferences.downloadMode = downloadMode;
   const resolvedFolderPath = normalizeRelativePath(
     folderNameInput.value
       || state.downloadPreferences.subfolderName
@@ -1501,6 +1527,9 @@ function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages
   if (gallerySortSelect) {
     gallerySortSelect.disabled = disabled;
   }
+  if (galleryDownloadModeSelect) {
+    galleryDownloadModeSelect.disabled = disabled;
+  }
   minWidthInput.disabled = disabled;
   minHeightInput.disabled = disabled;
   formatFilterSelect.disabled = disabled;
@@ -1519,7 +1548,8 @@ function setStatus(message, tone) {
 async function loadGallerySettings() {
   const defaults = {
     autoCheckDuplicates: true,
-    hideDeleteWarning: false
+    hideDeleteWarning: false,
+    downloadMode: "zip"
   };
 
   try {
@@ -1536,7 +1566,10 @@ async function loadGallerySettings() {
         : defaults.autoCheckDuplicates,
       hideDeleteWarning: typeof filters.hideDeleteWarning === "boolean"
         ? filters.hideDeleteWarning
-        : defaults.hideDeleteWarning
+        : defaults.hideDeleteWarning,
+      downloadMode: ["zip", "individual"].includes(filters.downloadMode)
+        ? filters.downloadMode
+        : defaults.downloadMode
     };
   } catch (_error) {
     return defaults;
