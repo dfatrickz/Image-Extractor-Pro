@@ -1,47 +1,36 @@
-# Image Extractor Pro
-### Find, preview, and save the best images from almost any website in just a few clicks.
+# Image Extractor Pro 🖼️
 
-## Core Features
-- **Quick Hover:** Hover over an image and save it right away without opening extra menus.
-- **Extract All:** Pull every image from a page into one clean gallery so you can review everything before saving.
-- **Smart Site Support:** Automatically finds bigger, better image versions when websites try to hide them behind thumbnails, sliders, or preview layers.
-- **Profile Manager:** Save your favorite settings for different tasks, like collecting product photos, inspiration boards, or research images.
-- **Built for bulk downloading:** Select the images you want, skip the ones you do not, and save them all together.
-- **Cleaner results:** Filter out tiny icons and other clutter so you can focus on the images that matter.
+A powerful, high-performance image extraction extension built for Firefox. 
 
-## Installation
-1. Download or unzip this extension folder to your computer.
-2. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge.
-3. Turn on **Developer mode**, click **Load unpacked**, and choose this folder.
+Image Extractor Pro is designed to seamlessly pull high-resolution images from any web page, bypassing lazy-load restrictions and presenting them in a premium, highly interactive gallery. Whether you need to grab a single asset or bulk-download an entire album, this tool gives you complete control without the clutter.
 
-## How to Use
+## ✨ Key Features
 
-### 1. Use Quick Hover
-1. Open any page with images.
-2. Move your mouse over an image.
-3. When the small save button appears, click it to save that image.
+* **Premium Gallery Interface:** A fully responsive grid with a sticky toolbar, dynamic selection stats, and comprehensive sorting/filtering controls.
+* **Lightbox Carousel Viewer:** Inspect images before downloading with a native, Flickr-style Lightbox featuring smooth thumbnail navigation and fixed-size previewing.
+* **Smart Duplicate Detection:** Automatically or manually scan the gallery to identify and remove duplicate images, saving you time and disk space.
+* **Advanced Download Routing:** * Download selected images as a bundled ZIP or individual files.
+  * Define custom subfolder names to keep your downloads organized.
+  * Choose between "Original" or "Sequential (1, 2, 3...)" file naming schemes.
+* **Fast Grab & Floating UI:** Use the non-intrusive floating page icon or "Fast Grab" mode to instantly pull assets without breaking your workflow.
+* **Lazy Load Bypass:** Built-in scrolling controls to force pages to load all hidden images before extraction.
+* **Privacy First:** All processing is done locally within your browser. No data is sent to external servers.
 
-![Quick Hover Screenshot](placeholder-quick-hover.png)
+## ⚙️ Customization
 
-### 2. Use Extract All and the Gallery
-1. Click the extension icon to open the floating panel.
-2. Choose **Extract All from Page** to collect every image, or pick a specific area if you only want part of the page.
-3. Review the results in the gallery, select the images you want, and download them.
+Customize the extension exactly to your workflow via the settings menu:
+* **Extraction Settings:** Toggle Fast Grab, website-specific controls, and lazy-load scrolling behavior.
+* **UI & Display:** Manage the floating page icon and configure the extension to start minimized.
+* **Gallery Preferences:** Set default download modes, naming schemes, and enable/disable the sticky toolbar and auto-duplicate scanner.
 
-![Extract All and Gallery Screenshot](placeholder-gallery.png)
+## 🚀 Installation (Firefox Developer Mode)
 
-### 3. Create a Settings Profile
-1. Open the extension panel and go to **Settings**.
-2. Adjust your preferred options for image size, download style, and other choices.
-3. Click **Save New** to create a profile you can reuse anytime.
+Currently in development for Firefox. To load this extension locally:
 
-![Settings Profile Screenshot](placeholder-profile.png)
+1. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
+2. Click **"Load Temporary Add-on..."**
+3. Select the `manifest.json` file from this project directory.
+4. The Image Extractor Pro icon will appear in your toolbar!
 
-## Supported Sites
-Image Extractor Pro works on most websites and includes extra-smart support for:
-
-- Instagram
-- Flickr
-- Reddit
-
-It is especially useful on sites that use previews, sliders, hidden full-size images, or lazy loading.
+## 📝 License
+MIT License
