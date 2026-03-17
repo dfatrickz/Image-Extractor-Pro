@@ -447,12 +447,12 @@ function renderGrid(matchingImages) {
     const card = imageCardTemplate.content.firstElementChild.cloneNode(true);
     const selectedIndicator = card.querySelector(".selected-indicator");
     const previewImage = card.querySelector("img");
-    const mediaFallback = card.querySelector(".media-fallback");
+    let mediaFallback = card.querySelector(".media-fallback");
     const formatPill = card.querySelector(".format-pill");
     const sourcePill = card.querySelector(".source-pill");
     const titleElement = card.querySelector(".card-title");
     const altElement = card.querySelector(".card-alt");
-    const urlElement = card.querySelector(".card-url");
+    let urlElement = card.querySelector(".card-url");
     const dimensionsElement = card.querySelector(".card-dimensions");
     const renderedDimensionsElement = card.querySelector(".card-rendered-dimensions");
     const openLink = card.querySelector(".card-open-link");
@@ -470,16 +470,37 @@ function renderGrid(matchingImages) {
       selectedIndicator.innerHTML = SELECTED_INDICATOR_SVG;
     }
 
+    if (mediaFallback) {
+      const noPreviewContainer = document.createElement("div");
+      noPreviewContainer.className = "media-fallback no-preview-container";
+      noPreviewContainer.style.cssText = "display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; text-align: center; color: #94a3b8;";
+      noPreviewContainer.innerHTML = '<span style="font-weight: 500; margin-bottom: 4px;">Preview Unavailable</span><span style="font-size: 11px; opacity: 0.7;">Blocked by website</span>';
+      mediaFallback.replaceWith(noPreviewContainer);
+      mediaFallback = noPreviewContainer;
+    }
+
+    if (urlElement && urlElement.tagName !== "A") {
+      const urlLink = document.createElement("a");
+      urlLink.className = urlElement.className;
+      urlLink.target = "_blank";
+      urlLink.rel = "noreferrer noopener";
+      urlElement.replaceWith(urlLink);
+      urlElement = urlLink;
+    }
+
     previewImage.hidden = false;
-    mediaFallback.hidden = true;
+    previewImage.style.display = "";
+    mediaFallback.style.display = "none";
     previewImage.alt = image.altText || "Extracted image preview";
     previewImage.addEventListener("load", () => {
       previewImage.hidden = false;
-      mediaFallback.hidden = true;
+      previewImage.style.display = "";
+      mediaFallback.style.display = "none";
     }, { once: true });
     previewImage.addEventListener("error", () => {
       previewImage.hidden = true;
-      mediaFallback.hidden = false;
+      previewImage.style.display = "none";
+      mediaFallback.style.display = "flex";
     }, { once: true });
     previewImage.src = image.url;
 
@@ -488,10 +509,13 @@ function renderGrid(matchingImages) {
     titleElement.textContent = image.altText || image.filenameHint || getHostLabel(image.url);
     altElement.textContent = image.altText || "No alt text available for this asset.";
     urlElement.textContent = trimUrlForDisplay(image.url);
+    urlElement.href = image.url;
     dimensionsElement.textContent = formatSourceDimensions(image);
     renderedDimensionsElement.textContent = formatRenderedDimensions(image);
     renderedDimensionsElement.hidden = !renderedDimensionsElement.textContent;
     openLink.href = image.url;
+    openLink.textContent = "View Image";
+    attachLightboxTrigger(openLink, image.url);
     if (deleteButton) {
       deleteButton.dataset.url = image.url || "";
       deleteButton.dataset.clientId = image.clientId;
@@ -501,6 +525,18 @@ function renderGrid(matchingImages) {
   });
 
   galleryGridElement.appendChild(fragment);
+}
+
+function attachLightboxTrigger(element, imageUrl) {
+  if (!element || !imageUrl) {
+    return;
+  }
+
+  element.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.openLightbox(imageUrl);
+  });
 }
 
 function getSortedImages(images) {
@@ -1230,7 +1266,13 @@ async function downloadSelectedImagesIndividually(images, options) {
             objectUrl: null
           }
         : await prepareConvertedDownload(image, options.outputFormat, options.quality);
-      const filename = buildDownloadFilename(image, index + 1, options.folderPath, preparedDownload.extension);
+      const filename = buildDownloadFilename(
+        image,
+        index + 1,
+        options.folderPath,
+        preparedDownload.extension,
+        options.namingScheme
+      );
       const downloadId = await api.downloads.download({
         url: preparedDownload.url,
         filename,
@@ -1489,18 +1531,45 @@ function getDownloadOptions() {
     saveMode: saveModeSelect.value,
     folderPath: resolvedFolderPath,
     downloadMode: activeDownloadMode,
+    namingScheme: state.downloadPreferences.namingScheme || "original",
     rateLimitMs: state.downloadPreferences.rateLimitMs,
     individualDownloadWarningThreshold: state.downloadPreferences.individualDownloadWarningThreshold,
     zipFilename: ensureZipFilename(resolvedFolderPath)
   };
 }
-function buildDownloadFilename(image, order, folderPath, extension) {
-  const baseName = sanitizeSegment(image.altText || image.filenameHint || image.sourceType || "image", 72)
-    || `image-${order}`;
-  const paddedOrder = String(order).padStart(3, "0");
-  const fileName = `${paddedOrder}-${baseName}.${extension}`;
+function buildDownloadFilename(image, order, folderPath, extension, namingScheme = "original") {
+  let fileName = "";
+
+  if (namingScheme === "sequential") {
+    fileName = `image_${order}.${extension}`;
+  } else {
+    fileName = getOriginalDownloadFilename(image.url, extension, order);
+  }
 
   return joinPathSegments(DOWNLOAD_ROOT_FOLDER, folderPath, fileName);
+}
+
+function getOriginalDownloadFilename(url, extension, order) {
+  let filename = String(url || "").split("/").pop() || "";
+  filename = filename.split("?")[0];
+
+  if (!filename) {
+    return `image_${order}.${extension}`;
+  }
+
+  const parts = filename.split(".");
+  const originalExtension = parts.length > 1 ? parts.pop() : "";
+  const baseName = parts.join(".") || filename;
+  const resolvedExtension = sanitizeSegment(extension || originalExtension || "jpg", 12) || "jpg";
+  let safeFilename = `${sanitizeSegment(baseName, 96) || `image_${order}`}.${resolvedExtension}`;
+
+  if (safeFilename.length > 32) {
+    const truncatedBase = (sanitizeSegment(baseName, 96) || `image_${order}`)
+      .substring(0, Math.max(1, 32 - resolvedExtension.length - 1));
+    safeFilename = `${truncatedBase}.${resolvedExtension}`;
+  }
+
+  return safeFilename;
 }
 
 function buildArchiveEntryName(image, order, folderPath, extension) {
@@ -1891,6 +1960,7 @@ function ensureZipFilename(value) {
 function createDefaultDownloadPreferences() {
   return {
     downloadMode: "zip",
+    namingScheme: "original",
     subfolderName: "",
     rateLimitMs: 0,
     individualDownloadWarningThreshold: 30,
@@ -1903,6 +1973,7 @@ function normalizeDownloadPreferences(preferences) {
 
   return {
     downloadMode: String(preferences?.downloadMode || preferences?.downloadPreferences?.downloadMode || "zip").toLowerCase() === "zip" ? "zip" : "individual",
+    namingScheme: String(preferences?.namingScheme || preferences?.downloadPreferences?.namingScheme || "original").toLowerCase() === "sequential" ? "sequential" : "original",
     subfolderName: normalizeRelativePath(preferences?.subfolderName || preferences?.downloadPreferences?.defaultSubfolderName || ""),
     rateLimitMs: Math.max(0, Number.parseInt(preferences?.rateLimitMs || preferences?.downloadPreferences?.rateLimitMs || "0", 10) || 0),
     individualDownloadWarningThreshold: Math.max(0, Number.parseInt(preferences?.individualDownloadWarningThreshold || preferences?.downloadPreferences?.individualDownloadWarningThreshold || "30", 10) || 0),
@@ -2056,6 +2127,174 @@ function hashString(value) {
   }
 
   return Math.abs(hash);
+}
+
+// --- LIGHTBOX CAROUSEL LOGIC ---
+let currentLbIndex = 0;
+let lbImages = [];
+let lightboxInitialized = false;
+
+function initLightbox() {
+  if (lightboxInitialized) {
+    return;
+  }
+
+  const overlay = document.getElementById("iep-lightbox");
+  if (!overlay) {
+    return;
+  }
+
+  const closeButton = document.getElementById("lb-close-btn");
+  const nextButton = document.getElementById("lb-next-btn");
+  const prevButton = document.getElementById("lb-prev-btn");
+  const downloadButtonElement = document.getElementById("lb-download-btn");
+
+  closeButton?.addEventListener("click", closeLightbox);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeLightbox();
+    }
+  });
+
+  nextButton?.addEventListener("click", () => {
+    if (!lbImages.length) {
+      return;
+    }
+
+    currentLbIndex = (currentLbIndex + 1) % lbImages.length;
+    renderLightboxImage();
+  });
+
+  prevButton?.addEventListener("click", () => {
+    if (!lbImages.length) {
+      return;
+    }
+
+    currentLbIndex = (currentLbIndex - 1 + lbImages.length) % lbImages.length;
+    renderLightboxImage();
+  });
+
+  downloadButtonElement?.addEventListener("click", () => {
+    if (!lbImages.length) {
+      return;
+    }
+
+    const imageUrl = lbImages[currentLbIndex]?.url;
+    if (!imageUrl) {
+      return;
+    }
+
+    api.downloads.download({
+      url: imageUrl,
+      saveAs: true
+    }).catch(() => {});
+  });
+
+  lightboxInitialized = true;
+}
+
+window.openLightbox = function openLightbox(startImageUrl) {
+  const cards = Array.from(document.querySelectorAll(".image-card")).filter((card) => {
+    if (card.hidden) {
+      return false;
+    }
+
+    if (window.getComputedStyle(card).display === "none") {
+      return false;
+    }
+
+    const noPreviewContainer = card.querySelector(".no-preview-container");
+    if (noPreviewContainer && !noPreviewContainer.hidden && window.getComputedStyle(noPreviewContainer).display !== "none") {
+      return false;
+    }
+
+    return true;
+  });
+
+  lbImages = cards.map((card) => {
+    const img = card.querySelector("img");
+    const link = card.querySelector("a.card-open-link, a");
+    return {
+      thumb: img ? (img.currentSrc || img.src) : "",
+      url: card.dataset.url || (link ? link.href : (img ? (img.currentSrc || img.src) : ""))
+    };
+  }).filter((image) => Boolean(image.url));
+
+  if (!lbImages.length) {
+    return;
+  }
+
+  currentLbIndex = lbImages.findIndex((image) => image.url === startImageUrl);
+  if (currentLbIndex === -1) {
+    currentLbIndex = 0;
+  }
+  const overlay = document.getElementById("iep-lightbox");
+  if (!overlay) {
+    return;
+  }
+
+  overlay.style.display = "flex";
+  renderLightboxImage();
+  renderThumbnails();
+  document.body.style.overflow = "hidden";
+};
+
+function closeLightbox() {
+  const overlay = document.getElementById("iep-lightbox");
+  if (overlay) {
+    overlay.style.display = "none";
+  }
+
+  document.body.style.overflow = "";
+}
+
+function renderLightboxImage() {
+  if (!lbImages.length) {
+    return;
+  }
+
+  const mainImage = document.getElementById("lb-main-image");
+  if (!mainImage) {
+    return;
+  }
+
+  mainImage.src = lbImages[currentLbIndex].url;
+
+  document.querySelectorAll(".lb-thumb").forEach((thumbnail, index) => {
+    thumbnail.classList.toggle("active", index === currentLbIndex);
+    if (index === currentLbIndex) {
+      thumbnail.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "center"
+      });
+    }
+  });
+}
+
+function renderThumbnails() {
+  const strip = document.getElementById("lb-thumbnail-strip");
+  if (!strip) {
+    return;
+  }
+
+  strip.replaceChildren();
+  lbImages.forEach((imageData, index) => {
+    const image = document.createElement("img");
+    image.src = imageData.thumb || imageData.url;
+    image.className = `lb-thumb${index === currentLbIndex ? " active" : ""}`;
+    image.addEventListener("click", () => {
+      currentLbIndex = index;
+      renderLightboxImage();
+    });
+    strip.appendChild(image);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initLightbox);
+} else {
+  initLightbox();
 }
 
 

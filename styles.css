@@ -326,7 +326,7 @@ img {
 }
 
 .iep-gallery-content-box > .status-banner-row {
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .iep-gallery-content-box > .iep-gallery-controls-row {
@@ -737,6 +737,16 @@ textarea::placeholder {
   overflow-wrap: anywhere;
 }
 
+.card-url {
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.card-url:hover {
+  color: var(--bg-accent, #3b82f6);
+  text-decoration: underline;
+}
+
 .card-size-block {
   background: rgba(37, 99, 235, 0.05);
   border: 1px solid rgba(37, 99, 235, 0.08);
@@ -783,6 +793,28 @@ textarea::placeholder {
 
 #resetFiltersButton {
   min-height: 54px;
+}
+
+/* Lightbox Thumbnail Styles */
+.lb-thumb {
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.lb-thumb:hover {
+  opacity: 0.8;
+}
+
+.lb-thumb.active {
+  opacity: 1;
+  border-color: var(--bg-accent, #3b82f6);
+  transform: scale(1.05);
 }
 
 

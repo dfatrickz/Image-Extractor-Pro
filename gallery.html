@@ -258,6 +258,24 @@
       &#8593;
     </button>
 
+    <div id="iep-lightbox" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(5px); flex-direction: column; align-items: center; justify-content: center;">
+      <div style="position: absolute; top: 20px; right: 30px; display: flex; gap: 15px; z-index: 2;">
+        <button id="lb-download-btn" class="primary-button" style="padding: 6px 16px;">Download Image</button>
+        <button id="lb-close-btn" class="secondary-button" style="padding: 6px 16px;">Close</button>
+      </div>
+
+      <div style="position: relative; width: 80vw; max-width: 1200px; height: 65vh; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden;">
+        <button id="lb-prev-btn" style="position: absolute; left: 20px; background: rgba(0,0,0,0.5); color: white; border: none; font-size: 24px; padding: 15px 20px; cursor: pointer; border-radius: 50%; z-index: 2;">&#10094;</button>
+
+        <img id="lb-main-image" src="" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+
+        <button id="lb-next-btn" style="position: absolute; right: 20px; background: rgba(0,0,0,0.5); color: white; border: none; font-size: 24px; padding: 15px 20px; cursor: pointer; border-radius: 50%; z-index: 2;">&#10095;</button>
+      </div>
+
+      <div id="lb-thumbnail-strip" style="width: 80vw; max-width: 1200px; height: 100px; margin-top: 20px; display: flex; gap: 10px; overflow-x: auto; padding: 10px 0; scroll-behavior: smooth; justify-content: center;">
+      </div>
+    </div>
+
     <script src="gallery.js"></script>
   </body>
 </html>
