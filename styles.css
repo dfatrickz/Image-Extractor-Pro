@@ -235,7 +235,6 @@ img {
   background: linear-gradient(135deg, var(--accent), #0ea5e9);
   box-shadow: 0 16px 36px rgba(37, 99, 235, 0.26);
   color: #ffffff;
-  min-height: 54px;
   padding: 0 22px;
 }
 
@@ -243,7 +242,6 @@ img {
   background: var(--surface-strong);
   box-shadow: var(--shadow-soft);
   color: var(--text);
-  min-height: 46px;
   padding: 0 18px;
 }
 
@@ -251,7 +249,6 @@ img {
   background: transparent;
   border: 1px solid var(--border-strong);
   color: var(--text);
-  min-height: 46px;
   padding: 0 18px;
 }
 
@@ -346,7 +343,6 @@ img {
 .iep-toolbar .primary-button,
 .iep-toolbar .secondary-button,
 .iep-toolbar .ghost-button {
-  padding: 4px 8px !important;
   font-size: 12px !important;
   height: auto !important;
   line-height: normal !important;
@@ -783,6 +779,10 @@ textarea::placeholder {
   .toolbar {
     justify-content: flex-start;
   }
+}
+
+#resetFiltersButton {
+  min-height: 54px;
 }
 
 

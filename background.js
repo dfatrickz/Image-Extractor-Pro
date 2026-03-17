@@ -248,11 +248,11 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// FLICKR STEALTH WIRETAP
+// FLICKR DATA CACHE SETUP
 // Watch for Flickr tabs loading or updating
 api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab.url && tab.url.includes("flickr.com") && changeInfo.status === "loading") {
-    // Safely inject the wiretap directly into the page's MAIN execution world
+    // Setup the data helper directly in the page's MAIN execution world
     api.scripting.executeScript({
       target: { tabId: tabId },
       world: "MAIN",
@@ -266,7 +266,7 @@ function setupFlickrHelper() {
   if (window.iepHelperActive) return;
   window.iepHelperActive = true;
 
-  // 1. MODERN FETCH INTERCEPTOR
+  // 1. MODERN FETCH HELPER
   const originalFetch = window.fetch;
   window.fetch = async function (...args) {
     const response = await originalFetch.apply(this, args);
@@ -282,7 +282,7 @@ function setupFlickrHelper() {
     return response;
   };
 
-  // 2. LEGACY XHR INTERCEPTOR (For Pagination & Group Pools)
+  // 2. LEGACY XHR HELPER (For Pagination & Group Pools)
   const originalXHROpen = window.XMLHttpRequest.prototype.open;
   window.XMLHttpRequest.prototype.open = function () {
     this.addEventListener("load", function () {

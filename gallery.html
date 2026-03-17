@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Extractor Pro Gallery</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+      .iep-sticky-header-wrapper {
+        position: sticky;
+        top: 10px;
+        z-index: 1000;
+        background-color: var(--bg-primary, #0f172a);
+        padding: 12px 20px;
+        margin-top: -10px;
+        border-bottom: 1px solid #334155;
+        border-radius: 8px;
+      }
+
+      .iep-toolbar .primary-button,
+      .iep-toolbar .secondary-button,
+      .iep-toolbar .ghost-button {
+        height: auto;
+        line-height: normal;
+      }
+    </style>
   </head>
   <body class="gallery-body" data-theme="system">
     <main class="gallery-shell">
@@ -149,10 +168,10 @@
         </section>
 
         <div class="iep-gallery-controls-row">
-          <div class="toolbar iep-toolbar">
+          <div id="iep-toolbar" class="toolbar iep-toolbar">
             <button id="selectAllButton" class="secondary-button" type="button">Select All</button>
             <button id="deselectAllButton" class="ghost-button" type="button">Unselect All</button>
-            <select id="galleryDownloadModeSelect" style="background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 12px; margin-right: 8px;">
+            <select id="galleryDownloadModeSelect" style="background: var(--bg-secondary, #1e293b); color: white; border: 1px solid var(--bg-accent, #3b82f6); border-radius: 4px; padding: 4px 8px; font-size: 12px; margin-right: 8px;">
               <option value="zip">ZIP File</option>
               <option value="individual">Individual Files</option>
             </select>
@@ -160,6 +179,9 @@
               <span class="button-label">Download Selected</span>
               <span class="button-spinner" aria-hidden="true"></span>
             </button>
+          </div>
+
+          <div id="iep-sticky-stats" style="opacity: 0; transition: opacity 0.3s ease; font-size: 13px; font-weight: 500; color: #94a3b8; flex-grow: 1; text-align: center; pointer-events: none; white-space: nowrap; padding: 0 15px;">
           </div>
 
           <div class="iep-sort-container">
@@ -231,6 +253,10 @@
         </div>
       </div>
     </div>
+
+    <button id="iep-back-to-top" style="display: none; position: fixed; bottom: 30px; right: 30px; z-index: 9999; background: var(--bg-accent, #3b82f6); color: white; border: none; border-radius: 50%; width: 44px; height: 44px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-size: 20px; transition: opacity 0.2s ease;">
+      &#8593;
+    </button>
 
     <script src="gallery.js"></script>
   </body>

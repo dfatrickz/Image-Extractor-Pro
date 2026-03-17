@@ -99,6 +99,7 @@ const emptyStateElement = document.getElementById("emptyState");
 const emptyStateTitleElement = document.getElementById("emptyStateTitle");
 const emptyStateMessageElement = document.getElementById("emptyStateMessage");
 const galleryGridElement = document.getElementById("galleryGrid");
+const galleryControlsRowElement = document.querySelector(".iep-gallery-controls-row");
 const selectAllButton = document.getElementById("selectAllButton");
 const deselectAllButton = document.getElementById("deselectAllButton");
 const downloadButton = document.getElementById("downloadButton");
@@ -121,6 +122,8 @@ const deleteModalElement = document.getElementById("iepDeleteModal");
 const hideDeleteWarningCheckbox = document.getElementById("iepHideDeleteWarning");
 const cancelDeleteButton = document.getElementById("iepCancelDelete");
 const confirmDeleteButton = document.getElementById("iepConfirmDelete");
+const backToTopButton = document.getElementById("iep-back-to-top");
+const stickyStatsElement = document.getElementById("iep-sticky-stats");
 const imageCardTemplate = document.getElementById("imageCardTemplate");
 const SELECTED_INDICATOR_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
 let loadingOverlayFrame = 0;
@@ -137,9 +140,10 @@ const state = {
   duplicateCount: 0,
   downloadPreferences: createDefaultDownloadPreferences(),
   gallerySettings: {
-    autoCheckDuplicates: true,
+    autoCheckDuplicates: false,
     hideDeleteWarning: false,
-    downloadMode: "zip"
+    downloadMode: "zip",
+    stickyToolbar: true
   },
   hasDuplicateCheckRun: false,
   pendingDelete: null
@@ -189,10 +193,35 @@ window.addEventListener("beforeunload", () => {
   downloadObjectUrls.clear();
 });
 
+if (backToTopButton) {
+  window.addEventListener("scroll", () => {
+    if (window.scrollY > 300) {
+      backToTopButton.style.display = "block";
+    } else {
+      backToTopButton.style.display = "none";
+    }
+
+    if (stickyStatsElement) {
+      if (window.scrollY > 120) {
+        stickyStatsElement.style.opacity = "1";
+      } else {
+        stickyStatsElement.style.opacity = "0";
+      }
+    }
+  });
+
+  backToTopButton.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
 initialize();
 
 async function initialize() {
   state.gallerySettings = await loadGallerySettings();
+  if (galleryControlsRowElement) {
+    galleryControlsRowElement.classList.toggle("iep-sticky-header-wrapper", Boolean(state.gallerySettings.stickyToolbar));
+  }
   state.isAnalyzingDuplicates = false;
   state.showDuplicates = false;
   state.duplicateCount = 0;
@@ -294,10 +323,12 @@ function render() {
   selectedCountElement.textContent = String(selectedImages.length);
   formatCountElement.textContent = String(visibleFormats.size);
   galleryGridElement.classList.toggle("show-duplicates", state.showDuplicates);
+  updateDownloadButtonState(selectedImages.length);
 
   renderDuplicateStatus();
   renderEmptyState(matchingImages, visibleImages);
   renderGrid(matchingImages);
+  updateStickyStats(selectedImages.length);
   setControlsDisabled(
     state.images.length === 0 || state.isDownloading || state.isAnalyzingDuplicates,
     visibleImages.length === 0,
@@ -648,19 +679,28 @@ async function runDuplicateCheck() {
     return;
   }
 
+  const currentScroll = window.scrollY || document.documentElement.scrollTop;
+  let duplicateResult = null;
   state.isAnalyzingDuplicates = true;
   state.showDuplicates = false;
   showLoadingOverlay("Scanning for duplicates...", 0);
   render();
 
   try {
-    state.images = await detectDuplicates(state.images);
+    duplicateResult = await detectDuplicates(state.images, currentScroll);
+    state.images = duplicateResult.images;
     state.duplicateCount = state.images.filter((image) => image.isDuplicate).length;
     state.hasDuplicateCheckRun = true;
   } finally {
     state.isAnalyzingDuplicates = false;
     hideLoadingOverlay();
     render();
+    const restoredScroll = duplicateResult?.currentScroll ?? currentScroll;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, restoredScroll);
+      });
+    });
   }
 }
 
@@ -749,8 +789,8 @@ function matchesDeletionTarget(image, clientId, url) {
   return Boolean(url) && image.url === url;
 }
 
-async function detectDuplicates(images) {
-  const currentScroll = window.scrollY || document.documentElement.scrollTop;
+async function detectDuplicates(images, savedScrollPosition = null) {
+  const currentScroll = savedScrollPosition ?? (window.scrollY || document.documentElement.scrollTop);
   const nextImages = images.map((image) => ({
     ...image,
     isDuplicate: false,
@@ -765,10 +805,10 @@ async function detectDuplicates(images) {
     queueLoadingOverlayUpdate(percent, "Scanning for duplicates...");
   });
   queueLoadingOverlayUpdate(100, "Scanning for duplicates...");
-  window.requestAnimationFrame(() => {
-    window.scrollTo(0, currentScroll);
-  });
-  return nextImages;
+  return {
+    images: nextImages,
+    currentScroll
+  };
 }
 
 async function flagUrlBaseDuplicates(images, reportProgress = () => {}) {
@@ -1520,6 +1560,33 @@ function updateDownloadControls() {
       : "Default downloads keep the current Image Extractor Pro folder flow inside Firefox's configured downloads location.";
   }
 }
+
+function updateDownloadButtonState(selectedCount) {
+  if (!downloadButton) {
+    return;
+  }
+
+  if (selectedCount === 0) {
+    downloadButton.title = "Select images first";
+    downloadButton.style.opacity = "0.5";
+    downloadButton.style.cursor = "not-allowed";
+    return;
+  }
+
+  downloadButton.title = "";
+  downloadButton.style.opacity = "1";
+  downloadButton.style.cursor = "pointer";
+}
+
+function updateStickyStats(selectedCount) {
+  if (!stickyStatsElement) {
+    return;
+  }
+
+  const totalImages = document.querySelectorAll(".image-card").length;
+  stickyStatsElement.innerHTML = `<span style="color: var(--text-primary, #f8fafc);">${selectedCount}</span> selected &nbsp;|&nbsp; ${totalImages} total`;
+}
+
 function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages = false) {
   selectAllButton.disabled = disabled || noVisibleImages;
   deselectAllButton.disabled = disabled || state.images.length === 0;
@@ -1547,9 +1614,10 @@ function setStatus(message, tone) {
 
 async function loadGallerySettings() {
   const defaults = {
-    autoCheckDuplicates: true,
+    autoCheckDuplicates: false,
     hideDeleteWarning: false,
-    downloadMode: "zip"
+    downloadMode: "zip",
+    stickyToolbar: true
   };
 
   try {
@@ -1569,7 +1637,10 @@ async function loadGallerySettings() {
         : defaults.hideDeleteWarning,
       downloadMode: ["zip", "individual"].includes(filters.downloadMode)
         ? filters.downloadMode
-        : defaults.downloadMode
+        : defaults.downloadMode,
+      stickyToolbar: typeof filters.stickyToolbar === "boolean"
+        ? filters.stickyToolbar
+        : defaults.stickyToolbar
     };
   } catch (_error) {
     return defaults;
