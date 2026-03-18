@@ -817,6 +817,32 @@ textarea::placeholder {
   transform: scale(1.05);
 }
 
+/* Match btnManualDupeCheck (Primary Blue) */
+#selectAllButton {
+  background: linear-gradient(135deg, var(--bg-accent, #3b82f6), #0ea5e9) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+/* Dark Mode Overrides */
+:root[data-theme="dark"] h3,
+:root[data-theme="dark"] .iep-dark-label {
+  color: #f0f0f0 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] h3,
+  :root[data-theme="system"] .iep-dark-label {
+    color: #f0f0f0 !important;
+  }
+}
+
+.card-dimensions.res-upgraded,
+.card-url.res-upgraded {
+  color: #f59e0b !important;
+  font-weight: 600;
+}
+
 
 
 

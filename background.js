@@ -92,6 +92,8 @@ async function openGalleryFromContent(tab, message) {
       theme: ["system", "dark", "light"].includes(String(message.theme || "system").toLowerCase()) ? String(message.theme || "system").toLowerCase() : "system",
       rateLimitMs: Math.max(0, Number.parseInt(message.rateLimitMs || "0", 10) || 0),
       individualDownloadWarningThreshold: Math.max(0, Number.parseInt(message.individualDownloadWarningThreshold || "30", 10) || 0),
+      flickrNetworkCache: Array.isArray(message.flickrNetworkCache) ? message.flickrNetworkCache : [],
+      flickrApiKey: message.flickrApiKey || "",
       extractedAt: new Date().toISOString(),
       images
     });
@@ -266,16 +268,35 @@ function setupFlickrHelper() {
   if (window.iepHelperActive) return;
   window.iepHelperActive = true;
 
+  const relevantFlickrRequestPattern = /(flickr\.interestingness|flickr\.interestingness\.getList|flickr\.photos\.getExplore|\/explore\b|\/search\b|\/graphql\b|services\/rest\/\?method=flickr\.interestingness\.getList|services\/rest\/\?method=flickr\.photos\.getExplore)/i;
+  const relevantFlickrPayloadPattern = /(live\.staticflickr\.com|farm[0-9]+\.staticflickr\.com|"url_[okhb]"|'url_[okhb]'|url_[okhb]\b)/i;
+
+  function isRelevantFlickrPayload(requestUrl, text) {
+    const safeUrl = String(requestUrl || "");
+    const safeText = String(text || "");
+    return relevantFlickrRequestPattern.test(safeUrl) || relevantFlickrPayloadPattern.test(safeText);
+  }
+
+  function postFlickrPayload(text) {
+    if (!text) {
+      return;
+    }
+
+    window.postMessage({ type: "IEP_FLICKR_DATA_CACHED", payload: text }, "*");
+  }
+
   // 1. MODERN FETCH HELPER
   const originalFetch = window.fetch;
   window.fetch = async function (...args) {
     const response = await originalFetch.apply(this, args);
     try {
       const clone = response.clone();
+      const requestUrl = typeof args[0] === "string"
+        ? args[0]
+        : args[0]?.url || response.url || "";
       clone.text().then((text) => {
-        // Broadened check to ensure we don't miss oddly formatted JSON
-        if (text && text.includes("live.staticflickr.com")) {
-          window.postMessage({ type: "IEP_FLICKR_DATA_CACHED", payload: text }, "*");
+        if (isRelevantFlickrPayload(requestUrl, text)) {
+          postFlickrPayload(text);
         }
       }).catch(() => {});
     } catch (e) {}
@@ -284,12 +305,14 @@ function setupFlickrHelper() {
 
   // 2. LEGACY XHR HELPER (For Pagination & Group Pools)
   const originalXHROpen = window.XMLHttpRequest.prototype.open;
-  window.XMLHttpRequest.prototype.open = function () {
+  window.XMLHttpRequest.prototype.open = function (method, url) {
+    this.__iepFlickrRequestUrl = url;
     this.addEventListener("load", function () {
       try {
         const text = this.responseText;
-        if (text && text.includes("live.staticflickr.com")) {
-          window.postMessage({ type: "IEP_FLICKR_DATA_CACHED", payload: text }, "*");
+        const requestUrl = this.responseURL || this.__iepFlickrRequestUrl || "";
+        if (isRelevantFlickrPayload(requestUrl, text)) {
+          postFlickrPayload(text);
         }
       } catch (e) {}
     });

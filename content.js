@@ -96,30 +96,32 @@
   let lastMouseY = 0;
 
   window.iepFlickrData = window.iepFlickrData || {};
+  window.iepFlickrNetworkCache = window.iepFlickrNetworkCache || [];
+  window.flickrNetworkCache = window.iepFlickrNetworkCache;
 
   window.addEventListener("message", (event) => {
     if (event.data && event.data.type === "IEP_FLICKR_DATA_CACHED") {
-      const text = event.data.payload;
-      // Safely match URLs with escaped JSON slashes
-      const matches = text.match(/(?:https?:)?(?:\\\\?\/|\/\/)+live\.staticflickr\.com(?:\\\\?\/|\/\/)[^"'{}\s<>]+?_([a-f0-9]+)_[okh]\.(?:jpg|png|gif)[^"'{}\s<>]*/ig);
-
-      if (matches) {
-        matches.forEach((match) => {
-          let cleanUrl = match.replace(/\\\//g, "/");
-          if (!cleanUrl.startsWith("http")) cleanUrl = "https:" + cleanUrl.replace(/^:/, "");
-
-          const idMatch = cleanUrl.match(/\/(\d+)_[a-f0-9]+/i);
-          if (idMatch) {
-            const photoId = idMatch[1];
-            // Always upgrade to _o (Original) if we find it
-            if (!window.iepFlickrData[photoId] || cleanUrl.includes("_o.") || (cleanUrl.includes("_k.") && !window.iepFlickrData[photoId].includes("_o."))) {
-              window.iepFlickrData[photoId] = cleanUrl;
-            }
-          }
-        });
+      const payloadText = String(event.data.payload || "");
+      if (payloadText) {
+        window.iepFlickrNetworkCache.push(payloadText);
+        if (window.iepFlickrNetworkCache.length > 20) {
+          window.iepFlickrNetworkCache.splice(0, window.iepFlickrNetworkCache.length - 20);
+        }
+        window.flickrNetworkCache = window.iepFlickrNetworkCache;
       }
+      cacheFlickrUrlsFromText(event.data.payload);
     }
   });
+
+  async function handleFastGrab(thumbUrl) {
+    const maxData = await window.getTrueFlickrMax(thumbUrl);
+    const downloadUrl = maxData?.url || thumbUrl;
+
+    return api.runtime.sendMessage({
+      type: "IEP_QUICK_DOWNLOAD",
+      url: downloadUrl
+    });
+  }
 
   class FloatingExtractorController {
     constructor() {
@@ -572,10 +574,7 @@
           return;
         }
 
-        await api.runtime.sendMessage({
-          type: "IEP_QUICK_DOWNLOAD",
-          url
-        });
+        await handleFastGrab(url);
 
         this.flashSurferHoverButton();
       });
@@ -1240,6 +1239,8 @@
           theme: this.state.filters.theme,
           rateLimitMs: this.state.filters.rateLimitMs,
           individualDownloadWarningThreshold: this.state.filters.individualDownloadWarningThreshold,
+          flickrNetworkCache: location.hostname.includes("flickr.com") ? Array.from(window.flickrNetworkCache || []).slice(-20) : [],
+          flickrApiKey: location.hostname.includes("flickr.com") ? extractFlickrApiKey(document.documentElement.innerHTML) : "",
           images: this.state.previewImages.map((image) => ({
             ...image,
             selected: false
@@ -1623,6 +1624,8 @@
 
           .iep-shell[data-theme="light"] { color-scheme: light; --iep-bg-primary: #f5f9ff; --iep-bg-secondary: #edf4ff; --iep-surface: rgba(255, 255, 255, 0.96); --iep-surface-soft: #f8fafc; --iep-surface-strong: #ffffff; --iep-text-main: #0f172a; --iep-text-muted: #475569; --iep-text-soft: #64748b; --iep-border: rgba(148, 163, 184, 0.18); --iep-border-strong: rgba(148, 163, 184, 0.3); --iep-accent: #2563eb; --iep-accent-strong: #1d4ed8; --iep-accent-soft: rgba(37, 99, 235, 0.12); --iep-header-bg: linear-gradient(180deg, #eef4ff, #ffffff); --iep-icon-bg: rgba(255, 255, 255, 0.88); --iep-icon-active-bg: #eff6ff; --iep-button-secondary: #e2e8f0; --iep-success-bg: #ecfdf5; --iep-success-border: rgba(16, 185, 129, 0.24); --iep-success-text: #065f46; --iep-error-bg: #fef2f2; --iep-error-border: rgba(239, 68, 68, 0.22); --iep-error-text: #991b1b; --iep-info-bg: #eff6ff; --iep-info-border: rgba(37, 99, 235, 0.22); --iep-info-text: #1d4ed8; --iep-shadow: 0 28px 60px rgba(15, 23, 42, 0.22); --iep-shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.08); --iep-backdrop: rgba(15, 23, 42, 0.58); --iep-fab-gradient: linear-gradient(135deg, #0f172a, #1d4ed8); --iep-selection-overlay: rgba(37, 99, 235, 0.05); }
           .iep-shell[data-theme="dark"] { color-scheme: dark; --iep-bg-primary: #0f172a; --iep-bg-secondary: #15233a; --iep-surface: rgba(15, 23, 42, 0.96); --iep-surface-soft: #172235; --iep-surface-strong: #111b2d; --iep-text-main: #e2e8f0; --iep-text-muted: #cbd5e1; --iep-text-soft: #94a3b8; --iep-border: rgba(148, 163, 184, 0.16); --iep-border-strong: rgba(148, 163, 184, 0.26); --iep-accent: #60a5fa; --iep-accent-strong: #3b82f6; --iep-accent-soft: rgba(96, 165, 250, 0.18); --iep-header-bg: linear-gradient(180deg, #172554, #111b2d); --iep-icon-bg: rgba(15, 23, 42, 0.88); --iep-icon-active-bg: rgba(37, 99, 235, 0.2); --iep-button-secondary: #1e293b; --iep-success-bg: rgba(6, 95, 70, 0.34); --iep-success-border: rgba(16, 185, 129, 0.26); --iep-success-text: #bbf7d0; --iep-error-bg: rgba(127, 29, 29, 0.36); --iep-error-border: rgba(248, 113, 113, 0.24); --iep-error-text: #fecaca; --iep-info-bg: rgba(30, 64, 175, 0.34); --iep-info-border: rgba(96, 165, 250, 0.24); --iep-info-text: #bfdbfe; --iep-shadow: 0 28px 60px rgba(2, 6, 23, 0.55); --iep-shadow-soft: 0 10px 24px rgba(2, 6, 23, 0.3); --iep-backdrop: rgba(2, 6, 23, 0.72); --iep-fab-gradient: linear-gradient(135deg, #1e293b, #2563eb); --iep-selection-overlay: rgba(96, 165, 250, 0.08); }
+          .iep-shell[data-theme="dark"] .iep-settings-panel h3, .iep-shell[data-theme="dark"] .iep-dark-label { color: #f0f0f0 !important; }
+          @media (prefers-color-scheme: dark) { .iep-shell[data-theme="system"] .iep-settings-panel h3, .iep-shell[data-theme="system"] .iep-dark-label { color: #f0f0f0 !important; } }
           .iep-shell { position: fixed; inset: 0; pointer-events: none; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
           .iep-fab, .iep-panel, .iep-settings-modal { box-sizing: border-box; pointer-events: auto; }
           .iep-fab { position: fixed; width: 56px; height: 56px; border: none; border-radius: 18px; background: var(--iep-fab-gradient); color: #f8fafc; box-shadow: 0 20px 42px rgba(15, 23, 42, 0.28); display: grid; place-items: center; cursor: pointer; padding: 0; overflow: hidden; }
@@ -1717,7 +1720,7 @@
           </section>
           <button id="iepSurferHoverBtn" class="iep-surfer-hover-btn" type="button" aria-label="Download hovered image" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M8 10l4 4 4-4"></path><path d="M5 20h14"></path></svg></button>
           <div id="iepSelectionOutline" class="iep-selection-outline" hidden></div>
-          <div id="iepSettingsModal" class="iep-settings-modal" hidden><div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div><section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings"><div class="iep-modal-header"><h2>Settings</h2><p>Configure download behavior and limits</p></div><div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);"><select id="iepProfileSelect" style="flex: 1; background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 6px;"></select><button id="iepSaveProfileBtn" title="Save as New Profile" style="background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Save New</button><button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button></div><div class="iep-settings-grid"><section class="iep-settings-panel"><h3>Download Preferences</h3><p>Choose how the gallery should package and label the selected images.</p><div class="iep-settings-stack"><div class="iep-inline-group"><span class="iep-field-label">Default Download Mode</span><div class="iep-radio-group"><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label></div></div><label class="iep-field"><span>Subfolder Name</span><input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)"><div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Overrides automatic naming. All images will save to this single folder/ZIP.</div></label><label style="display: block; margin-top: 10px; font-size: 13px;">File Naming Scheme</label><select id="iep-naming-scheme" style="background: var(--bg-secondary); color: white; border: 1px solid #334155; border-radius: 4px; padding: 4px; width: 100%; margin-top: 4px;"><option value="original">Original Name (Default)</option><option value="sequential">Sequential (1, 2, 3...)</option></select><label class="iep-field"><span>Theme</span><select id="iepTheme" class="iep-select"><option value="system">System (Default)</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="iep-field"><span>Image Origin</span><select id="iepImageOrigin" class="iep-select"><option value="all">All</option><option value="rendered">Rendered</option><option value="source">Source</option></select></label></div></section><section class="iep-settings-panel"><h3>Safety &amp; Behavior</h3><p>Controls for UI visibility and guarded download behavior in the gallery.</p><div class="iep-settings-stack"><label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label><label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label><label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab</span></label><label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label><label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox" checked><span>Start Minimized</span></label><label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label><label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label><h3>Gallery Preferences</h3><label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking (Gallery)</span></label><label class="iep-toggle-row"><input id="iepStickyToolbar" type="checkbox" checked><span>Sticky Toolbar</span></label></div></section></div><div class="iep-actions"><button id="iepSettingsDoneButton" class="iep-button iep-button-primary" type="button">Done</button></div></section></div>
+          <div id="iepSettingsModal" class="iep-settings-modal" hidden><div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div><section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings"><div class="iep-modal-header"><h2>Settings</h2><p>Configure download behavior and limits</p></div><div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);"><select id="iepProfileSelect" style="flex: 1; background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 6px;"></select><button id="iepSaveProfileBtn" title="Save as New Profile" style="background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Save New</button><button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button></div><div class="iep-settings-grid"><section class="iep-settings-panel"><h3>Download Preferences</h3><p>Choose how the gallery should package and label the selected images.</p><div class="iep-settings-stack"><div class="iep-inline-group"><span class="iep-field-label">Default Download Mode</span><div class="iep-radio-group"><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label></div></div><label class="iep-field"><span>Subfolder Name</span><input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)"><div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Overrides automatic naming. All images will save to this single folder/ZIP.</div></label><label class="iep-dark-label" style="display: block; margin-top: 10px; font-size: 13px;">File Naming Scheme</label><select id="iep-naming-scheme" style="background: var(--bg-secondary); color: white; border: 1px solid #334155; border-radius: 4px; padding: 4px; width: 100%; margin-top: 4px;"><option value="original">Original Name (Default)</option><option value="sequential">Sequential (1, 2, 3...)</option></select><label class="iep-field"><span>Theme</span><select id="iepTheme" class="iep-select"><option value="system">System (Default)</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="iep-field"><span>Image Origin</span><select id="iepImageOrigin" class="iep-select"><option value="all">All</option><option value="rendered">Rendered</option><option value="source">Source</option></select></label></div></section><section class="iep-settings-panel"><h3>Safety &amp; Behavior</h3><p>Controls for UI visibility and guarded download behavior in the gallery.</p><div class="iep-settings-stack"><label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label><label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label><label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab</span></label><label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label><label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox" checked><span>Start Minimized</span></label><label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label><label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label><h3>Gallery Preferences</h3><label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking (Gallery)</span></label><label class="iep-toggle-row"><input id="iepStickyToolbar" type="checkbox" checked><span>Sticky Toolbar</span></label></div></section></div><div class="iep-actions"><button id="iepSettingsDoneButton" class="iep-button iep-button-primary" type="button">Done</button></div></section></div>
         </div>
       `;
     }
@@ -2053,7 +2056,7 @@ async function registerCandidates(imageMap, candidates, context) {
         continue;
       }
 
-      const finalUrl = resolveAbsoluteUrl(getFlickrOriginalUrl(normalizedUrl));
+      const finalUrl = resolveAbsoluteUrl(getFlickrHighRes(normalizedUrl));
       if (!finalUrl) {
         continue;
       }
@@ -2286,40 +2289,318 @@ async function registerCandidates(imageMap, candidates, context) {
     return right.sourceRank - left.sourceRank;
   }
 
-  function getFlickrOriginalUrl(url) {
-    if (!url || !url.includes("flickr.com")) return url;
+  function cacheFlickrUrlsFromText(text) {
+    for (const url of extractFlickrUrlsFromText(text)) {
+      storeFlickrUrl(url);
+    }
+  }
 
-    // 1. Protection for already high-res URLs
-    if (/_([a-f0-9]+)_[kho]\.(?:jpg|png|gif)/i.test(url)) return url;
+  function extractFlickrUrlsFromText(text) {
+    const normalizedText = String(text || "")
+      .replace(/\\u002F/gi, "/")
+      .replace(/\\u0026/gi, "&")
+      .replace(/\\u003F/gi, "?")
+      .replace(/\\u003D/gi, "=")
+      .replace(/\\\//g, "/")
+      .replace(/\\\?/g, "?")
+      .replace(/&amp;/gi, "&");
+    const urls = new Set();
+    const rawUrlPattern = /(?:https?:)?\/\/(?:live\.staticflickr\.com|farm[0-9]+\.staticflickr\.com)\/[^\s"'{}<>\\]+?\.(?:jpg|png|gif)(?:\?[^\s"'{}<>\\]*)?/ig;
+    const keyedUrlPattern = /["']url_((?:[3456]k)|[okhb])["']\s*:\s*["']([^"']+)["']/ig;
+    let match;
 
-    // 2. The Original Script Miner
-    const idMatch = url.match(/\/(\d+)_[a-f0-9]+/i);
+    while ((match = rawUrlPattern.exec(normalizedText)) !== null) {
+      const cleanUrl = normalizeFlickrUrl(match[0]);
+      if (cleanUrl) {
+        urls.add(cleanUrl);
+      }
+    }
+
+    while ((match = keyedUrlPattern.exec(normalizedText)) !== null) {
+      const cleanUrl = normalizeFlickrUrl(match[2]);
+      if (cleanUrl) {
+        urls.add(cleanUrl);
+      }
+    }
+
+    return Array.from(urls);
+  }
+
+  function normalizeFlickrUrl(url) {
+    let cleanUrl = String(url || "")
+      .trim()
+      .replace(/\\u002F/gi, "/")
+      .replace(/\\u0026/gi, "&")
+      .replace(/\\u003F/gi, "?")
+      .replace(/\\u003D/gi, "=")
+      .replace(/\\\//g, "/")
+      .replace(/\\\?/g, "?")
+      .replace(/&amp;/gi, "&");
+
+    if (!cleanUrl) {
+      return "";
+    }
+
+    if (cleanUrl.startsWith("//")) {
+      cleanUrl = `https:${cleanUrl}`;
+    } else if (!/^https?:\/\//i.test(cleanUrl) && /(live\.staticflickr\.com|farm[0-9]+\.staticflickr\.com)/i.test(cleanUrl)) {
+      cleanUrl = `https://${cleanUrl.replace(/^\/+/, "")}`;
+    }
+
+    return cleanUrl;
+  }
+
+  function storeFlickrUrl(url) {
+    const cleanUrl = normalizeFlickrUrl(url);
+    if (!cleanUrl) {
+      return;
+    }
+
+    const photoIdMatch = cleanUrl.match(/\/(\d+)_[a-f0-9]+/i);
+    if (!photoIdMatch) {
+      return;
+    }
+
+    const photoId = photoIdMatch[1];
+    const currentUrl = window.iepFlickrData[photoId] || "";
+    const nextRank = getFlickrSizeRank(cleanUrl);
+    const currentRank = getFlickrSizeRank(currentUrl);
+
+    if (!currentUrl || nextRank > currentRank || (nextRank === currentRank && cleanUrl.length > currentUrl.length)) {
+      window.iepFlickrData[photoId] = cleanUrl;
+    }
+  }
+
+  function getFlickrSizeRank(url) {
+    const sizeMatch = String(url || "").match(/_((?:[3456]k)|[okhb])\.(?:jpg|png|gif)(?:[?#].*)?$/i);
+    const sizeKey = sizeMatch?.[1]?.toLowerCase() || "";
+    if (sizeKey === "6k") return 8;
+    if (sizeKey === "5k") return 7;
+    if (sizeKey === "4k") return 6;
+    if (sizeKey === "3k") return 5;
+    if (sizeKey === "o") return 4;
+    if (sizeKey === "k") return 3;
+    if (sizeKey === "h") return 2;
+    if (sizeKey === "b") return 1;
+    return 0;
+  }
+
+  function extractFlickrApiKey(markup) {
+    const match = String(markup || "").match(/(?:\"api_key\"|\"site_key\")\s*:\s*\"([a-f0-9]+)\"/i);
+    return match ? match[1] : "";
+  }
+
+  window.getTrueFlickrMax = async function(thumbUrl) {
+    const fallback = { url: thumbUrl, width: null, height: null };
+    if (!thumbUrl.includes("flickr.com")) return fallback;
+
+    const cacheKey = "iep_flickr_cache";
+    const storageLocal = (typeof chrome !== "undefined" && chrome?.storage?.local)
+      ? chrome.storage.local
+      : api.storage.local;
+    const useCallbackStorage = typeof chrome !== "undefined" && chrome?.storage?.local && storageLocal === chrome.storage.local;
+
+    async function readCacheStore() {
+      if (!storageLocal) {
+        return {};
+      }
+      if (useCallbackStorage) {
+        return await new Promise((resolve) => storageLocal.get(cacheKey, resolve));
+      }
+      return await storageLocal.get([cacheKey]);
+    }
+
+    async function writeCacheStore(value) {
+      if (!storageLocal) {
+        return;
+      }
+      if (useCallbackStorage) {
+        await new Promise((resolve) => storageLocal.set(value, resolve));
+        return;
+      }
+      await storageLocal.set(value);
+    }
+
+    try {
+      const stored = await readCacheStore();
+      const urlCache = stored?.[cacheKey] || {};
+
+      if (urlCache[thumbUrl]) {
+        console.log("[IEP Debug] 🟢 Loaded from Persistent Cache!");
+        const cached = urlCache[thumbUrl];
+        return { ...cached, fromCache: true };
+      }
+    } catch (error) {
+      console.warn("Cache read failed", error);
+    }
+
+    async function saveAndReturn(result) {
+      try {
+        const stored = await readCacheStore();
+        const urlCache = stored?.[cacheKey] || {};
+        const toSave = { ...result };
+        delete toSave.fromCache;
+        urlCache[thumbUrl] = toSave;
+        await writeCacheStore({ [cacheKey]: urlCache });
+      } catch (error) {
+        console.warn("Cache write failed", error);
+      }
+      result.fromCache = false;
+      return result;
+    }
+
+    const match = thumbUrl.match(/live\.staticflickr\.com\/(\d+)\/(\d+)_([a-fA-F0-9]+)/);
+    if (!match) return saveAndReturn(fallback);
+
+    const serverId = match[1];
+    const photoId = match[2];
+    const premiumSizes = ["o", "6k", "5k", "4k", "3k", "k", "h"];
+    const allSizes = ["o", "6k", "5k", "4k", "3k", "k", "h", "b", "c", "z"];
+
+    function getDims(text, sizeLetter) {
+      const dimMatch = text.match(new RegExp(`"${sizeLetter}"\\s*:\\s*\\{[^{}]*"width"\\s*:\\s*(\\d+)[^{}]*"height"\\s*:\\s*(\\d+)`, "i"));
+      if (dimMatch) return { width: Number.parseInt(dimMatch[1], 10), height: Number.parseInt(dimMatch[2], 10) };
+
+      const flatMatch = text.match(new RegExp(`"width_${sizeLetter}"\\s*:\\s*(\\d+).*?"height_${sizeLetter}"\\s*:\\s*(\\d+)`, "i"));
+      if (flatMatch) return { width: Number.parseInt(flatMatch[1], 10), height: Number.parseInt(flatMatch[2], 10) };
+
+      if (sizeLetter === "o") {
+        const originalMatch = text.match(/"originalwidth"\s*:\s*(\d+).*?"originalheight"\s*:\s*(\d+)/i)
+          || text.match(/"o_width"\s*:\s*(\d+).*?"o_height"\s*:\s*(\d+)/i);
+        if (originalMatch) {
+          return {
+            width: Number.parseInt(originalMatch[1], 10),
+            height: Number.parseInt(originalMatch[2], 10)
+          };
+        }
+      }
+
+      return { width: null, height: null };
+    }
+
+    function scanTextForUrls(text, sizeArray) {
+      const osMatch = text.match(/"originalsecret"\s*:\s*"([a-zA-Z0-9]+)"/);
+      if (osMatch) {
+        const ofMatch = text.match(/"originalformat"\s*:\s*"([a-zA-Z0-9]+)"/);
+        const dims = getDims(text, "o");
+        return {
+          url: `https://live.staticflickr.com/${serverId}/${photoId}_${osMatch[1]}_o.${ofMatch ? ofMatch[1] : "jpg"}`,
+          width: dims.width,
+          height: dims.height
+        };
+      }
+
+      for (let size of sizeArray) {
+        const sizeMatch = text.match(new RegExp(photoId + `_([a-zA-Z0-9]+)_${size}\\.([a-zA-Z]+)`, "i"));
+        if (sizeMatch) {
+          const dims = getDims(text, size);
+          return {
+            url: `https://live.staticflickr.com/${serverId}/${photoId}_${sizeMatch[1]}_${size}.${sizeMatch[2]}`,
+            width: dims.width,
+            height: dims.height
+          };
+        }
+      }
+      return null;
+    }
+
+    const cacheData = typeof window.flickrNetworkCache !== "undefined" ? JSON.stringify(window.flickrNetworkCache) : "";
+    const fastResult = scanTextForUrls(cacheData + " " + document.documentElement.innerHTML, premiumSizes);
+    if (fastResult) return saveAndReturn(fastResult);
+
+    try {
+      const pageUrl = `https://www.flickr.com/photo.gne?id=${photoId}`;
+      const res = await fetch(pageUrl, { credentials: "include" });
+      const fetchResult = scanTextForUrls(await res.text(), allSizes);
+      if (fetchResult && fetchResult.url !== thumbUrl) return saveAndReturn(fetchResult);
+    } catch (e) {
+      console.error("[IEP Debug] ❌ Background Fetch FAILED:", e);
+    }
+
+    return saveAndReturn(fallback);
+  };
+
+  function getFlickrHighRes(thumbUrl) {
+    if (!thumbUrl || !thumbUrl.includes("flickr.com")) return thumbUrl;
+
+    const normalizedThumbUrl = normalizeFlickrUrl(thumbUrl) || thumbUrl;
+
+    // Protection for already high-res URLs
+    if (/_([a-f0-9]+)_[kho]\.(?:jpg|png|gif)/i.test(normalizedThumbUrl)) return normalizedThumbUrl;
+
+    const idMatch = normalizedThumbUrl.match(/\/(\d+)_[a-f0-9]+/i);
     if (idMatch) {
       const photoId = idMatch[1];
-      // Cached page data check for SPA navigation
       if (window.iepFlickrData && window.iepFlickrData[photoId]) {
         return window.iepFlickrData[photoId];
       }
-      const scriptContent = Array.from(document.scripts).map((script) => script.textContent).join(" ");
-      const sizes = ["o", "k", "h"]; // Original -> massive -> large
+
+      const scriptContent = Array.from(document.scripts)
+        .filter((script) => {
+          const className = typeof script.className === "string" ? script.className : "";
+          const text = String(script.textContent || "");
+          return /modelExport/i.test(className) || /modelExport|Y\.API|staticflickr\.com/i.test(text);
+        })
+        .map((script) => script.textContent || "")
+        .join(" ");
+      const sizes = ["o", "k", "h"];
 
       for (const size of sizes) {
-        // Original regex targeting staticflickr domains inside the script tags
         const regex = new RegExp(`([^"']+(?:live\\.staticflickr\\.com|farm[0-9]+\\.staticflickr\\.com)[^"']+?${photoId}_[a-f0-9]+_${size}\\.(?:jpg|png|gif)[^"']*)`, "i");
         const match = scriptContent.match(regex);
 
         if (match) {
           let finalUrl = match[1].replace(/\\\//g, "/");
           if (finalUrl.startsWith("//")) {
-            finalUrl = "https:" + finalUrl;
+            finalUrl = `https:${finalUrl}`;
           }
           return finalUrl;
         }
       }
     }
 
-    // 3. The Original Fallback
-    return url.replace(/_([a-f0-9]{10})(?:_[a-z])?\.([a-zA-Z]+)(?:[?#].*)?$/i, "_$1_b.$2");
+    // --- SMART API FALLBACK (For Explore & SPA Navigation) ---
+    // If modelExport failed, try to find the photo data in the intercepted network cache or raw DOM
+    const urlParts = normalizedThumbUrl.match(/live\.staticflickr\.com\/(\d+)\/(\d+)_([a-zA-Z0-9]+)_/);
+    if (urlParts) {
+      const serverId = urlParts[1];
+      const photoId = urlParts[2];
+      const standardSecret = urlParts[3];
+
+      // Combine intercepted network cache and raw DOM text
+      const cacheData = typeof window.flickrNetworkCache !== "undefined" ? JSON.stringify(window.flickrNetworkCache) : "";
+      const rawDom = document.documentElement.innerHTML;
+      const searchGround = `${cacheData} ${rawDom}`;
+
+      // Search for the highly unique standard secret instead of the ID
+      // This bypasses HTML clutter and zeroes in on the JSON data objects
+      const secretIndex = searchGround.indexOf(`"${standardSecret}"`);
+
+      if (secretIndex !== -1) {
+        // Grab the data chunk surrounding the secret
+        const localBlock = searchGround.substring(Math.max(0, secretIndex - 800), secretIndex + 1500);
+
+        // 1. Look for the holy grail: originalsecret
+        const osMatch = localBlock.match(/"originalsecret"\s*:\s*"([a-zA-Z0-9]+)"/);
+        const ofMatch = localBlock.match(/"originalformat"\s*:\s*"([a-zA-Z0-9]+)"/);
+        if (osMatch) {
+          const fmt = ofMatch ? ofMatch[1] : "jpg";
+          return `https://live.staticflickr.com/${serverId}/${photoId}_${osMatch[1]}_o.${fmt}`;
+        }
+
+        // 2. Look for safe upgrade sizes using the standard secret
+        const upgradeMatch = localBlock.match(/"upgrade_sizes"\s*:\s*\[(.*?)\]/);
+        if (upgradeMatch) {
+          const sizes = upgradeMatch[1];
+          if (sizes.includes('"k"')) return `https://live.staticflickr.com/${serverId}/${photoId}_${standardSecret}_k.jpg`;
+          if (sizes.includes('"h"')) return `https://live.staticflickr.com/${serverId}/${photoId}_${standardSecret}_h.jpg`;
+        }
+      }
+    }
+    // --- END SMART API FALLBACK ---
+
+    // Final fallback if absolutely nothing is found
+    return normalizedThumbUrl;
   }
 
   async function getBestImageUrl(element) {
@@ -2390,7 +2671,7 @@ async function registerCandidates(imageMap, candidates, context) {
       finalUrl = await resolveQuickDownloadUrl(element);
     }
 
-    return resolveAbsoluteUrl(getFlickrOriginalUrl(finalUrl));
+    return resolveAbsoluteUrl(getFlickrHighRes(finalUrl));
   }
 
   async function resolveQuickDownloadUrl(element) {

@@ -23,6 +23,12 @@
         height: auto;
         line-height: normal;
       }
+
+      @keyframes spin {
+        100% {
+          transform: rotate(360deg);
+        }
+      }
     </style>
   </head>
   <body class="gallery-body" data-theme="system">
@@ -179,6 +185,11 @@
               <span class="button-label">Download Selected</span>
               <span class="button-spinner" aria-hidden="true"></span>
             </button>
+          </div>
+
+          <div id="iep-resolve-progress" style="display: none; align-items: center; gap: 10px; font-size: 13px; font-weight: 500; color: #f59e0b; background: rgba(245, 158, 11, 0.1); padding: 5px 12px; border-radius: 6px;">
+            <span class="spinner" style="width: 14px; height: 14px; border: 2px solid #f59e0b; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: spin 1s linear infinite;"></span>
+            <span id="iep-resolve-text">Upgrading Resolutions: 0/0</span>
           </div>
 
           <div id="iep-sticky-stats" style="opacity: 0; transition: opacity 0.3s ease; font-size: 13px; font-weight: 500; color: #94a3b8; flex-grow: 1; text-align: center; pointer-events: none; white-space: nowrap; padding: 0 15px;">

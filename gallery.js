@@ -118,6 +118,8 @@ const gallerySortSelect = document.getElementById("iepGallerySort");
 const galleryDownloadModeSelect = document.getElementById("galleryDownloadModeSelect");
 const downloadModeSummary = document.getElementById("downloadModeSummary");
 const saveModeHint = document.getElementById("saveModeHint");
+const resolveProgressBoxElement = document.getElementById("iep-resolve-progress");
+const resolveProgressTextElement = document.getElementById("iep-resolve-text");
 const deleteModalElement = document.getElementById("iepDeleteModal");
 const hideDeleteWarningCheckbox = document.getElementById("iepHideDeleteWarning");
 const cancelDeleteButton = document.getElementById("iepCancelDelete");
@@ -145,8 +147,142 @@ const state = {
     downloadMode: "zip",
     stickyToolbar: true
   },
+  isResolvingFlickrQueue: false,
+  resolveQueuePromise: null,
   hasDuplicateCheckRun: false,
   pendingDelete: null
+};
+window.flickrNetworkCache = window.flickrNetworkCache || [];
+window.flickrApiKey = window.flickrApiKey || "";
+
+window.getTrueFlickrMax = async function(thumbUrl) {
+  const fallback = { url: thumbUrl, width: null, height: null };
+  if (!thumbUrl.includes("flickr.com")) return fallback;
+
+  const cacheKey = "iep_flickr_cache";
+  const storageLocal = (typeof chrome !== "undefined" && chrome?.storage?.local)
+    ? chrome.storage.local
+    : api.storage.local;
+  const useCallbackStorage = typeof chrome !== "undefined" && chrome?.storage?.local && storageLocal === chrome.storage.local;
+
+  async function readCacheStore() {
+    if (!storageLocal) {
+      return {};
+    }
+    if (useCallbackStorage) {
+      return await new Promise((resolve) => storageLocal.get(cacheKey, resolve));
+    }
+    return await storageLocal.get([cacheKey]);
+  }
+
+  async function writeCacheStore(value) {
+    if (!storageLocal) {
+      return;
+    }
+    if (useCallbackStorage) {
+      await new Promise((resolve) => storageLocal.set(value, resolve));
+      return;
+    }
+    await storageLocal.set(value);
+  }
+
+  try {
+    const stored = await readCacheStore();
+    const urlCache = stored?.[cacheKey] || {};
+
+    if (urlCache[thumbUrl]) {
+      console.log("[IEP Debug] 🟢 Loaded from Persistent Cache!");
+      const cached = urlCache[thumbUrl];
+      return { ...cached, fromCache: true };
+    }
+  } catch (error) {
+    console.warn("Cache read failed", error);
+  }
+
+  async function saveAndReturn(result) {
+    try {
+      const stored = await readCacheStore();
+      const urlCache = stored?.[cacheKey] || {};
+      const toSave = { ...result };
+      delete toSave.fromCache;
+      urlCache[thumbUrl] = toSave;
+      await writeCacheStore({ [cacheKey]: urlCache });
+    } catch (error) {
+      console.warn("Cache write failed", error);
+    }
+    result.fromCache = false;
+    return result;
+  }
+
+  const match = thumbUrl.match(/live\.staticflickr\.com\/(\d+)\/(\d+)_([a-fA-F0-9]+)/);
+  if (!match) return saveAndReturn(fallback);
+
+  const serverId = match[1];
+  const photoId = match[2];
+  const premiumSizes = ["o", "6k", "5k", "4k", "3k", "k", "h"];
+  const allSizes = ["o", "6k", "5k", "4k", "3k", "k", "h", "b", "c", "z"];
+
+  function getDims(text, sizeLetter) {
+    const dimMatch = text.match(new RegExp(`"${sizeLetter}"\\s*:\\s*\\{[^{}]*"width"\\s*:\\s*(\\d+)[^{}]*"height"\\s*:\\s*(\\d+)`, "i"));
+    if (dimMatch) return { width: Number.parseInt(dimMatch[1], 10), height: Number.parseInt(dimMatch[2], 10) };
+
+    const flatMatch = text.match(new RegExp(`"width_${sizeLetter}"\\s*:\\s*(\\d+).*?"height_${sizeLetter}"\\s*:\\s*(\\d+)`, "i"));
+    if (flatMatch) return { width: Number.parseInt(flatMatch[1], 10), height: Number.parseInt(flatMatch[2], 10) };
+
+    if (sizeLetter === "o") {
+      const originalMatch = text.match(/"originalwidth"\s*:\s*(\d+).*?"originalheight"\s*:\s*(\d+)/i)
+        || text.match(/"o_width"\s*:\s*(\d+).*?"o_height"\s*:\s*(\d+)/i);
+      if (originalMatch) {
+        return {
+          width: Number.parseInt(originalMatch[1], 10),
+          height: Number.parseInt(originalMatch[2], 10)
+        };
+      }
+    }
+
+    return { width: null, height: null };
+  }
+
+  function scanTextForUrls(text, sizeArray) {
+    const osMatch = text.match(/"originalsecret"\s*:\s*"([a-zA-Z0-9]+)"/);
+    if (osMatch) {
+      const ofMatch = text.match(/"originalformat"\s*:\s*"([a-zA-Z0-9]+)"/);
+      const dims = getDims(text, "o");
+      return {
+        url: `https://live.staticflickr.com/${serverId}/${photoId}_${osMatch[1]}_o.${ofMatch ? ofMatch[1] : "jpg"}`,
+        width: dims.width,
+        height: dims.height
+      };
+    }
+
+    for (let size of sizeArray) {
+      const sizeMatch = text.match(new RegExp(photoId + `_([a-zA-Z0-9]+)_${size}\\.([a-zA-Z]+)`, "i"));
+      if (sizeMatch) {
+        const dims = getDims(text, size);
+        return {
+          url: `https://live.staticflickr.com/${serverId}/${photoId}_${sizeMatch[1]}_${size}.${sizeMatch[2]}`,
+          width: dims.width,
+          height: dims.height
+        };
+      }
+    }
+    return null;
+  }
+
+  const cacheData = typeof window.flickrNetworkCache !== "undefined" ? JSON.stringify(window.flickrNetworkCache) : "";
+  const fastResult = scanTextForUrls(cacheData + " " + document.documentElement.innerHTML, premiumSizes);
+  if (fastResult) return saveAndReturn(fastResult);
+
+  try {
+    const pageUrl = `https://www.flickr.com/photo.gne?id=${photoId}`;
+    const res = await fetch(pageUrl, { credentials: "include" });
+    const fetchResult = scanTextForUrls(await res.text(), allSizes);
+    if (fetchResult && fetchResult.url !== thumbUrl) return saveAndReturn(fetchResult);
+  } catch (e) {
+    console.error("[IEP Debug] ❌ Background Fetch FAILED:", e);
+  }
+
+  return saveAndReturn(fallback);
 };
 applyTheme(state.downloadPreferences.theme);
 selectAllButton.addEventListener("click", () => setVisibleSelections(true));
@@ -246,6 +382,8 @@ async function initialize() {
     state.session = response.session;
     state.downloadPreferences = normalizeDownloadPreferences(response.session);
     applyTheme(state.downloadPreferences.theme);
+    window.flickrNetworkCache = Array.isArray(response.session.flickrNetworkCache) ? response.session.flickrNetworkCache : [];
+    window.flickrApiKey = response.session.flickrApiKey || "";
     const initialDownloadMode = state.downloadPreferences.downloadMode || state.gallerySettings.downloadMode;
     state.downloadPreferences.downloadMode = initialDownloadMode;
     if (galleryDownloadModeSelect) {
@@ -261,6 +399,7 @@ async function initialize() {
         }))
       : [];
     originalOrder = [...state.images];
+    state.isResolvingFlickrQueue = state.images.some((image) => String(image.url || "").includes("flickr.com"));
 
     const preferredFolder = normalizeRelativePath(
       state.downloadPreferences.subfolderName
@@ -287,12 +426,18 @@ async function initialize() {
     }
 
     render();
+    if (state.isResolvingFlickrQueue) {
+      state.resolveQueuePromise = processFlickrQueue(document.querySelectorAll(".image-card"));
+      void state.resolveQueuePromise;
+    }
   } catch (error) {
     state.session = null;
     state.images = [];
     state.isAnalyzingDuplicates = false;
     state.showDuplicates = false;
     state.duplicateCount = 0;
+    state.isResolvingFlickrQueue = false;
+    state.resolveQueuePromise = null;
     state.downloadPreferences = createDefaultDownloadPreferences();
     applyTheme(state.downloadPreferences.theme);
     render();
@@ -490,7 +635,9 @@ function renderGrid(matchingImages) {
 
     previewImage.hidden = false;
     previewImage.style.display = "";
+    previewImage.classList.add("card-image");
     mediaFallback.style.display = "none";
+    previewImage.removeAttribute("onerror");
     previewImage.alt = image.altText || "Extracted image preview";
     previewImage.addEventListener("load", () => {
       previewImage.hidden = false;
@@ -510,7 +657,14 @@ function renderGrid(matchingImages) {
     altElement.textContent = image.altText || "No alt text available for this asset.";
     urlElement.textContent = trimUrlForDisplay(image.url);
     urlElement.href = image.url;
-    dimensionsElement.textContent = formatSourceDimensions(image);
+    urlElement.classList.toggle("res-upgraded", Boolean(image.isUpgraded));
+    dimensionsElement.textContent = image.isUpgraded && getBestWidth(image) && getBestHeight(image)
+      ? `${getBestWidth(image)} × ${getBestHeight(image)}`
+      : formatSourceDimensions(image);
+    dimensionsElement.classList.toggle("res-upgraded", Boolean(image.isUpgraded));
+    if (image.isUpgraded && getBestWidth(image) && getBestHeight(image)) {
+      dimensionsElement.textContent = `Source ${getBestWidth(image)} x ${getBestHeight(image)}`;
+    }
     renderedDimensionsElement.textContent = formatRenderedDimensions(image);
     renderedDimensionsElement.hidden = !renderedDimensionsElement.textContent;
     openLink.href = image.url;
@@ -532,11 +686,13 @@ function attachLightboxTrigger(element, imageUrl) {
     return;
   }
 
-  element.addEventListener("click", (event) => {
+  element.removeAttribute("onclick");
+  element.dataset.lightboxUrl = imageUrl;
+  element.onclick = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    window.openLightbox(imageUrl);
-  });
+    window.openLightbox(element.dataset.lightboxUrl || imageUrl);
+  };
 }
 
 function getSortedImages(images) {
@@ -1259,15 +1415,17 @@ async function downloadSelectedImagesIndividually(images, options) {
     const image = images[index];
 
     try {
+      const resolvedData = await window.getTrueFlickrMax(image.url);
+      const resolvedImage = mergeResolvedImageData(image, resolvedData);
       const preparedDownload = options.outputFormat === "original"
         ? {
-            url: image.url,
-            extension: detectOriginalExtension(image),
+            url: resolvedImage.url,
+            extension: detectOriginalExtension(resolvedImage),
             objectUrl: null
           }
-        : await prepareConvertedDownload(image, options.outputFormat, options.quality);
+        : await prepareConvertedDownload(resolvedImage, options.outputFormat, options.quality);
       const filename = buildDownloadFilename(
-        image,
+        resolvedImage,
         index + 1,
         options.folderPath,
         preparedDownload.extension,
@@ -1313,8 +1471,10 @@ async function downloadSelectedImagesAsZip(images, options) {
     const image = images[index];
 
     try {
-      const preparedFile = await prepareZipFile(image, options.outputFormat, options.quality);
-      const entryName = buildArchiveEntryName(image, index + 1, options.folderPath, preparedFile.extension);
+      const resolvedData = await window.getTrueFlickrMax(image.url);
+      const resolvedImage = mergeResolvedImageData(image, resolvedData);
+      const preparedFile = await prepareZipFile(resolvedImage, options.outputFormat, options.quality);
+      const entryName = buildArchiveEntryName(resolvedImage, index + 1, options.folderPath, preparedFile.extension);
       zip.file(entryName, preparedFile.blob);
       downloaded += 1;
     } catch (error) {
@@ -1635,6 +1795,13 @@ function updateDownloadButtonState(selectedCount) {
     return;
   }
 
+  if (state.isResolvingFlickrQueue) {
+    downloadButton.title = "Preparing Flickr resolutions...";
+    downloadButton.style.opacity = "0.5";
+    downloadButton.style.cursor = "wait";
+    return;
+  }
+
   if (selectedCount === 0) {
     downloadButton.title = "Select images first";
     downloadButton.style.opacity = "0.5";
@@ -1659,7 +1826,7 @@ function updateStickyStats(selectedCount) {
 function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages = false) {
   selectAllButton.disabled = disabled || noVisibleImages;
   deselectAllButton.disabled = disabled || state.images.length === 0;
-  downloadButton.disabled = disabled || noSelectedImages;
+  downloadButton.disabled = disabled || noSelectedImages || state.isResolvingFlickrQueue;
   if (gallerySortSelect) {
     gallerySortSelect.disabled = disabled;
   }
@@ -1679,6 +1846,162 @@ function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages
 function setStatus(message, tone) {
   statusMessageElement.textContent = message;
   statusBannerElement.dataset.tone = tone;
+}
+
+function refreshControlState() {
+  const matchingImages = getMatchingImages();
+  const visibleImages = getVisibleImages(getSortedImages(matchingImages));
+  const selectedCount = state.images.filter((image) => image.selected).length;
+
+  updateDownloadButtonState(selectedCount);
+  setControlsDisabled(
+    state.images.length === 0 || state.isDownloading || state.isAnalyzingDuplicates,
+    visibleImages.length === 0,
+    selectedCount === 0
+  );
+  updateStickyStats(selectedCount);
+}
+
+function mergeResolvedImageData(image, resolvedData) {
+  if (!image) {
+    return image;
+  }
+
+  const resolvedUrl = resolvedData?.url || image.url;
+  const resolvedWidth = Number.parseInt(resolvedData?.width, 10);
+  const resolvedHeight = Number.parseInt(resolvedData?.height, 10);
+  const hasDimensions = resolvedWidth > 0 && resolvedHeight > 0;
+  const hasUrlChange = resolvedUrl && resolvedUrl !== image.url;
+
+  if (!hasUrlChange && !hasDimensions) {
+    return image;
+  }
+
+  return {
+    ...image,
+    url: resolvedUrl || image.url,
+    sourceWidth: hasDimensions ? resolvedWidth : image.sourceWidth,
+    sourceHeight: hasDimensions ? resolvedHeight : image.sourceHeight,
+    naturalWidth: hasDimensions ? resolvedWidth : image.naturalWidth,
+    naturalHeight: hasDimensions ? resolvedHeight : image.naturalHeight,
+    width: hasDimensions ? resolvedWidth : image.width,
+    height: hasDimensions ? resolvedHeight : image.height,
+    isUpgraded: image.isUpgraded || hasUrlChange || hasDimensions
+  };
+}
+
+function updateResolvedImageData(clientId, resolvedData) {
+  if (!clientId || !resolvedData) {
+    return;
+  }
+
+  const image = state.images.find((entry) => entry.clientId === clientId);
+  if (image) {
+    Object.assign(image, mergeResolvedImageData(image, resolvedData));
+  }
+
+  const original = originalOrder.find((entry) => entry.clientId === clientId);
+  if (original) {
+    Object.assign(original, mergeResolvedImageData(original, resolvedData));
+  }
+}
+
+async function processFlickrQueue(imageCards) {
+  const queue = Array.from(imageCards || [])
+    .map((card) => ({
+      card,
+      clientId: card.dataset.clientId || "",
+      imgEl: card.querySelector(".card-image"),
+      linkEl: card.querySelector(".card-url"),
+      viewBtn: card.querySelector(".card-open-link")
+    }))
+    .filter((item) => {
+      const baseUrl = item.card?.dataset.url || item.imgEl?.currentSrc || item.imgEl?.src || "";
+      return Boolean(item.card && item.imgEl && baseUrl.includes("flickr.com"));
+    });
+
+  if (!queue.length) {
+    state.isResolvingFlickrQueue = false;
+    state.resolveQueuePromise = null;
+    if (resolveProgressBoxElement) {
+      resolveProgressBoxElement.style.display = "none";
+    }
+    refreshControlState();
+    return;
+  }
+
+  if (resolveProgressBoxElement) {
+    resolveProgressBoxElement.style.display = "flex";
+  }
+  if (resolveProgressTextElement) {
+    resolveProgressTextElement.textContent = `Upgrading Resolutions: 0/${queue.length}`;
+  }
+
+  let completed = 0;
+  const batchSize = 4;
+
+  for (let index = 0; index < queue.length; index += batchSize) {
+    const batch = queue.slice(index, index + batchSize);
+    let neededNetwork = false;
+
+    await Promise.all(batch.map(async (item) => {
+      const originalSrc = item.card.dataset.url || item.imgEl.currentSrc || item.imgEl.src || "";
+
+      try {
+        const maxData = await window.getTrueFlickrMax(originalSrc);
+        const nextUrl = maxData?.url || originalSrc;
+        if (!maxData?.fromCache) {
+          neededNetwork = true;
+        }
+
+        if (nextUrl !== originalSrc || (maxData?.width && maxData?.height)) {
+          updateResolvedImageData(item.clientId, maxData);
+          item.card.dataset.url = nextUrl;
+          if (maxData?.width && maxData?.height) {
+            item.card.dataset.width = String(maxData.width);
+            item.card.dataset.height = String(maxData.height);
+          }
+          item.imgEl.src = nextUrl;
+          if (item.linkEl) {
+            item.linkEl.href = nextUrl;
+            item.linkEl.textContent = trimUrlForDisplay(nextUrl);
+            item.linkEl.classList.add("res-upgraded");
+          }
+          if (item.viewBtn) {
+            item.viewBtn.href = nextUrl;
+            attachLightboxTrigger(item.viewBtn, nextUrl);
+          }
+
+          if (maxData?.width && maxData?.height) {
+            const resLabel = item.card.querySelector(".card-dimensions");
+            if (resLabel) {
+              resLabel.textContent = `${maxData.width} × ${maxData.height}`;
+              resLabel.classList.add("res-upgraded");
+              resLabel.textContent = `Source ${maxData.width} x ${maxData.height}`;
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[IEP Debug] Queue item failed:", error);
+      } finally {
+        completed += 1;
+        if (resolveProgressTextElement) {
+          resolveProgressTextElement.textContent = `Upgrading Resolutions: ${completed}/${queue.length}`;
+        }
+      }
+    }));
+
+    if (neededNetwork && index + batchSize < queue.length) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  if (resolveProgressBoxElement) {
+    resolveProgressBoxElement.style.display = "none";
+  }
+  state.isResolvingFlickrQueue = false;
+  state.resolveQueuePromise = null;
+  refreshControlState();
 }
 
 async function loadGallerySettings() {
@@ -2173,22 +2496,9 @@ function initLightbox() {
     currentLbIndex = (currentLbIndex - 1 + lbImages.length) % lbImages.length;
     renderLightboxImage();
   });
-
-  downloadButtonElement?.addEventListener("click", () => {
-    if (!lbImages.length) {
-      return;
-    }
-
-    const imageUrl = lbImages[currentLbIndex]?.url;
-    if (!imageUrl) {
-      return;
-    }
-
-    api.downloads.download({
-      url: imageUrl,
-      saveAs: true
-    }).catch(() => {});
-  });
+  if (downloadButtonElement) {
+    downloadButtonElement.onclick = null;
+  }
 
   lightboxInitialized = true;
 }
@@ -2254,11 +2564,41 @@ function renderLightboxImage() {
   }
 
   const mainImage = document.getElementById("lb-main-image");
+  const downloadButtonElement = document.getElementById("lb-download-btn");
   if (!mainImage) {
     return;
   }
+  const initialUrl = lbImages[currentLbIndex].url;
+  const activeIndex = currentLbIndex;
+  mainImage.src = initialUrl;
+  if (downloadButtonElement) {
+    downloadButtonElement.onclick = () => {
+      api.downloads.download({ url: initialUrl, saveAs: true }).catch(() => {});
+    };
+  }
 
-  mainImage.src = lbImages[currentLbIndex].url;
+  window.getTrueFlickrMax(initialUrl).then((maxData) => {
+    const maxUrl = maxData?.url || initialUrl;
+    if (currentLbIndex !== activeIndex || lbImages[currentLbIndex]?.url !== initialUrl) {
+      return;
+    }
+
+    if (mainImage.src !== maxUrl) {
+      mainImage.src = maxUrl;
+    }
+
+    if (downloadButtonElement) {
+      downloadButtonElement.onclick = () => {
+        api.downloads.download({ url: maxUrl, saveAs: true }).catch(() => {});
+      };
+    }
+  }).catch(() => {
+    if (downloadButtonElement) {
+      downloadButtonElement.onclick = () => {
+        api.downloads.download({ url: initialUrl, saveAs: true }).catch(() => {});
+      };
+    }
+  });
 
   document.querySelectorAll(".lb-thumb").forEach((thumbnail, index) => {
     thumbnail.classList.toggle("active", index === currentLbIndex);
