@@ -99,6 +99,11 @@ const emptyStateElement = document.getElementById("emptyState");
 const emptyStateTitleElement = document.getElementById("emptyStateTitle");
 const emptyStateMessageElement = document.getElementById("emptyStateMessage");
 const galleryGridElement = document.getElementById("galleryGrid");
+const galleryContentBoxElement = document.getElementById("galleryContentBox");
+const galleryPaginationElement = document.getElementById("galleryPagination");
+const galleryPrevPageButton = document.getElementById("galleryPrevPage");
+const galleryNextPageButton = document.getElementById("galleryNextPage");
+const galleryPaginationStatusElement = document.getElementById("galleryPaginationStatus");
 const galleryControlsRowElement = document.querySelector(".iep-gallery-controls-row");
 const selectAllButton = document.getElementById("selectAllButton");
 const deselectAllButton = document.getElementById("deselectAllButton");
@@ -119,7 +124,9 @@ const galleryDownloadModeSelect = document.getElementById("galleryDownloadModeSe
 const downloadModeSummary = document.getElementById("downloadModeSummary");
 const saveModeHint = document.getElementById("saveModeHint");
 const resolveProgressBoxElement = document.getElementById("iep-resolve-progress");
+const resolveProgressSpinnerElement = document.getElementById("iep-resolve-spinner");
 const resolveProgressTextElement = document.getElementById("iep-resolve-text");
+const retryResolveButtonElement = document.getElementById("iep-retry-resolve");
 const deleteModalElement = document.getElementById("iepDeleteModal");
 const hideDeleteWarningCheckbox = document.getElementById("iepHideDeleteWarning");
 const cancelDeleteButton = document.getElementById("iepCancelDelete");
@@ -131,6 +138,8 @@ const SELECTED_INDICATOR_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" 
 let loadingOverlayFrame = 0;
 let pendingLoadingOverlayState = null;
 let originalOrder = [];
+window.flickrFailedItems = window.flickrFailedItems || [];
+window.flickrUpgradedCount = window.flickrUpgradedCount || 0;
 
 const state = {
   sessionId: new URLSearchParams(window.location.search).get("session") || "",
@@ -145,12 +154,16 @@ const state = {
     autoCheckDuplicates: false,
     hideDeleteWarning: false,
     downloadMode: "zip",
-    stickyToolbar: true
+    stickyToolbar: true,
+    windowScale: "big",
+    themeStyle: "standard",
+    galleryPagination: "unlimited"
   },
   isResolvingFlickrQueue: false,
   resolveQueuePromise: null,
   hasDuplicateCheckRun: false,
-  pendingDelete: null
+  pendingDelete: null,
+  currentPage: 1
 };
 window.flickrNetworkCache = window.flickrNetworkCache || [];
 window.flickrApiKey = window.flickrApiKey || "";
@@ -215,7 +228,7 @@ window.getTrueFlickrMax = async function(thumbUrl) {
   }
 
   const match = thumbUrl.match(/live\.staticflickr\.com\/(\d+)\/(\d+)_([a-fA-F0-9]+)/);
-  if (!match) return saveAndReturn(fallback);
+  if (!match) return fallback;
 
   const serverId = match[1];
   const photoId = match[2];
@@ -269,20 +282,72 @@ window.getTrueFlickrMax = async function(thumbUrl) {
     return null;
   }
 
+  const isFlickrPage = window.location.hostname.includes("flickr.com");
+  const rawDom = isFlickrPage ? document.documentElement.innerHTML : "";
   const cacheData = typeof window.flickrNetworkCache !== "undefined" ? JSON.stringify(window.flickrNetworkCache) : "";
-  const fastResult = scanTextForUrls(cacheData + " " + document.documentElement.innerHTML, premiumSizes);
-  if (fastResult) return saveAndReturn(fastResult);
+  const searchGround = cacheData + " " + rawDom;
 
+  console.log(`[IEP Debug] Deep Scanning:`, thumbUrl);
+  const fastResult = scanTextForUrls(searchGround, premiumSizes);
+  if (fastResult) {
+    console.log(`[IEP Debug] 🟢 FAST PATH SUCCESS!`);
+    return saveAndReturn(fastResult);
+  }
+
+  // --- 2. BACKGROUND FETCH PATH ---
+  console.log(`[IEP Debug] 🟡 [ID: ${photoId}] Fast Path missed. Fetching HTML...`);
+  const controller = new AbortController();
+  let timeoutId;
   try {
     const pageUrl = `https://www.flickr.com/photo.gne?id=${photoId}`;
-    const res = await fetch(pageUrl, { credentials: "include" });
-    const fetchResult = scanTextForUrls(await res.text(), allSizes);
-    if (fetchResult && fetchResult.url !== thumbUrl) return saveAndReturn(fetchResult);
+
+    // 8-second timeout to prevent tarpitting
+    timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    console.log(`[IEP Debug] ⏳ [ID: ${photoId}] Firing request...`);
+    const res = await fetch(pageUrl, {
+      credentials: "include",
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    if (false) {
+    console.warn(`[IEP Debug] 🛑 TIMEOUT: Flickr delayed the response for ${photoId}. Aborting to prevent freeze.`);
+    console.error(`[IEP Debug] ❌ Background Fetch FAILED for ${photoId}:`, e);
+    console.log(`[IEP Debug] 📥 [ID: ${photoId}] Headers received. Status: ${res.status}`);
+
+    }
+    if (!res.ok) {
+      console.warn(`[IEP Debug] ⚠️ [ID: ${photoId}] Bad HTTP Status: ${res.status}`);
+    }
+
+    console.log(`[IEP Debug] ⏳ [ID: ${photoId}] Reading text body...`);
+    const htmlText = await res.text();
+    console.log(`[IEP Debug] 📖 [ID: ${photoId}] Text read complete (${htmlText.length} chars). Scanning...`);
+
+    const fetchResult = scanTextForUrls(htmlText, allSizes);
+    if (fetchResult) {
+      console.log(`[IEP Debug] 🟢 [ID: ${photoId}] SUCCESS! Upgraded.`);
+      console.log(`[IEP Debug] 🟢 FETCH SUCCESS!`);
+      return saveAndReturn(fetchResult);
+    } else {
+      console.log(`[IEP Debug] ❌ [ID: ${photoId}] Scanned, but no max sizes found.`);
+    }
   } catch (e) {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (e.name === "AbortError") {
+      console.warn(`[IEP Debug] 🛑 TIMEOUT: Flickr delayed the response for ${photoId}. Aborting to prevent freeze.`);
+      console.error(`[IEP Debug] 🛑 [ID: ${photoId}] FETCH TIMED OUT (10s). Flickr is throttling or hanging the connection.`);
+    } else {
+      console.error(`[IEP Debug] ❌ Background Fetch FAILED for ${photoId}:`, e);
+      console.error(`[IEP Debug] ❌ [ID: ${photoId}] Fetch FAILED:`, e.message);
+    }
     console.error("[IEP Debug] ❌ Background Fetch FAILED:", e);
   }
 
-  return saveAndReturn(fallback);
+  console.log(`[IEP Debug] ⚠️ ALL METHODS FAILED.`);
+  console.log(`[IEP Debug] ⚠️ [ID: ${photoId}] ALL METHODS FAILED.`);
+  return fallback;
 };
 applyTheme(state.downloadPreferences.theme);
 selectAllButton.addEventListener("click", () => setVisibleSelections(true));
@@ -290,19 +355,39 @@ deselectAllButton.addEventListener("click", clearAllSelections);
 downloadButton.addEventListener("click", handleDownloadSelected);
 galleryGridElement.addEventListener("click", handleGridClick);
 galleryGridElement.addEventListener("keydown", handleGridKeydown);
-minWidthInput.addEventListener("input", render);
-minHeightInput.addEventListener("input", render);
-formatFilterSelect.addEventListener("change", render);
+minWidthInput.addEventListener("input", () => {
+  state.currentPage = 1;
+  render();
+});
+minHeightInput.addEventListener("input", () => {
+  state.currentPage = 1;
+  render();
+});
+formatFilterSelect.addEventListener("change", () => {
+  state.currentPage = 1;
+  render();
+});
 resetFiltersButton.addEventListener("click", resetFilters);
 outputFormatSelect.addEventListener("change", updateDownloadControls);
 qualityInput.addEventListener("input", updateDownloadControls);
 saveModeSelect.addEventListener("change", updateDownloadControls);
 folderNameInput.addEventListener("input", updateDownloadControls);
 duplicateToggleElement.addEventListener("change", handleDuplicateToggle);
-gallerySortSelect?.addEventListener("change", render);
+gallerySortSelect?.addEventListener("change", () => {
+  state.currentPage = 1;
+  render();
+});
 galleryDownloadModeSelect?.addEventListener("change", () => {
   state.downloadPreferences.downloadMode = galleryDownloadModeSelect.value;
   updateDownloadControls();
+});
+galleryPrevPageButton?.addEventListener("click", () => {
+  state.currentPage = Math.max(1, state.currentPage - 1);
+  render();
+});
+galleryNextPageButton?.addEventListener("click", () => {
+  state.currentPage += 1;
+  render();
 });
 manualDupeCheckButton?.addEventListener("click", () => {
   void handleManualDuplicateCheck();
@@ -355,6 +440,7 @@ initialize();
 
 async function initialize() {
   state.gallerySettings = await loadGallerySettings();
+  applyGalleryTheme(state.gallerySettings.themeStyle);
   if (galleryControlsRowElement) {
     galleryControlsRowElement.classList.toggle("iep-sticky-header-wrapper", Boolean(state.gallerySettings.stickyToolbar));
   }
@@ -450,6 +536,7 @@ async function initialize() {
 function render() {
   const matchingImages = getSortedImages(getMatchingImages());
   const visibleImages = getVisibleImages(matchingImages);
+  const paginationState = getPaginationState(visibleImages);
   const selectedImages = state.images.filter((image) => image.selected);
   const visibleFormats = new Set(visibleImages.map((image) => getFormatKey(image)));
 
@@ -472,7 +559,8 @@ function render() {
 
   renderDuplicateStatus();
   renderEmptyState(matchingImages, visibleImages);
-  renderGrid(matchingImages);
+  renderGrid(paginationState.items);
+  renderPagination(paginationState);
   updateStickyStats(selectedImages.length);
   setControlsDisabled(
     state.images.length === 0 || state.isDownloading || state.isAnalyzingDuplicates,
@@ -533,6 +621,67 @@ function buildSubtitle() {
   }
 
   return "Review the detected images, fine-tune your selection, and batch-download the final set.";
+}
+
+function applyGalleryTheme(themeStyle) {
+  if (!galleryContentBoxElement) {
+    return;
+  }
+
+  galleryContentBoxElement.classList.remove("theme-minimal", "theme-standard", "theme-rich");
+  galleryContentBoxElement.classList.add(`theme-${themeStyle || "standard"}`);
+}
+
+function getPaginationLimit() {
+  const rawValue = String(state.gallerySettings.galleryPagination || "unlimited").toLowerCase();
+  if (rawValue === "unlimited") {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  return parsed > 0 ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function getPaginationState(images) {
+  const limit = getPaginationLimit();
+  if (!Number.isFinite(limit)) {
+    state.currentPage = 1;
+    return {
+      currentPage: 1,
+      totalPages: 1,
+      items: images,
+      totalItems: images.length,
+      limit
+    };
+  }
+
+  const totalPages = Math.max(1, Math.ceil(images.length / limit));
+  state.currentPage = Math.min(Math.max(state.currentPage, 1), totalPages);
+  const startIndex = (state.currentPage - 1) * limit;
+
+  return {
+    currentPage: state.currentPage,
+    totalPages,
+    items: images.slice(startIndex, startIndex + limit),
+    totalItems: images.length,
+    limit
+  };
+}
+
+function renderPagination(paginationState) {
+  if (!galleryPaginationElement || !galleryPrevPageButton || !galleryNextPageButton || !galleryPaginationStatusElement) {
+    return;
+  }
+
+  if (!Number.isFinite(paginationState.limit) || paginationState.totalItems <= paginationState.limit) {
+    galleryPaginationElement.hidden = true;
+    return;
+  }
+
+  galleryPaginationElement.hidden = false;
+  galleryPaginationStatusElement.textContent = `Page ${paginationState.currentPage} of ${paginationState.totalPages}`;
+  galleryPrevPageButton.disabled = paginationState.currentPage <= 1;
+  galleryNextPageButton.disabled = paginationState.currentPage >= paginationState.totalPages;
 }
 
 function renderEmptyState(matchingImages, visibleImages) {
@@ -815,6 +964,7 @@ function toggleCardSelection(clientId) {
 
 function handleDuplicateToggle() {
   state.showDuplicates = Boolean(duplicateToggleElement.checked);
+  state.currentPage = 1;
   render();
 }
 
@@ -851,6 +1001,7 @@ function resetFilters() {
   minWidthInput.value = "0";
   minHeightInput.value = "0";
   formatFilterSelect.value = "all";
+  state.currentPage = 1;
   render();
   setStatus("Filters reset. All extracted images are visible again.", "default");
 }
@@ -1906,26 +2057,33 @@ function updateResolvedImageData(clientId, resolvedData) {
   }
 }
 
-async function processFlickrQueue(imageCards) {
-  const queue = Array.from(imageCards || [])
-    .map((card) => ({
-      card,
-      clientId: card.dataset.clientId || "",
-      imgEl: card.querySelector(".card-image"),
-      linkEl: card.querySelector(".card-url"),
-      viewBtn: card.querySelector(".card-open-link")
-    }))
-    .filter((item) => {
-      const baseUrl = item.card?.dataset.url || item.imgEl?.currentSrc || item.imgEl?.src || "";
-      return Boolean(item.card && item.imgEl && baseUrl.includes("flickr.com"));
-    });
+async function processFlickrQueue(imageCards, isRetry = false) {
+  let queue = [];
+  state.isResolvingFlickrQueue = true;
+
+  if (isRetry) {
+    queue = [...window.flickrFailedItems];
+    window.flickrFailedItems = [];
+  } else {
+    queue = Array.from(imageCards || [])
+      .map((card) => ({
+        card,
+        clientId: card.dataset.clientId || "",
+        imgEl: card.querySelector(".card-image"),
+        linkEl: card.querySelector(".card-url"),
+        viewBtn: card.querySelector(".card-open-link")
+      }))
+      .filter((item) => {
+        const baseUrl = item.card?.dataset.url || item.imgEl?.currentSrc || item.imgEl?.src || "";
+        return Boolean(item.card && item.imgEl && baseUrl.includes("flickr.com"));
+      });
+    window.flickrUpgradedCount = 0;
+    window.flickrFailedItems = [];
+  }
 
   if (!queue.length) {
     state.isResolvingFlickrQueue = false;
     state.resolveQueuePromise = null;
-    if (resolveProgressBoxElement) {
-      resolveProgressBoxElement.style.display = "none";
-    }
     refreshControlState();
     return;
   }
@@ -1933,12 +2091,19 @@ async function processFlickrQueue(imageCards) {
   if (resolveProgressBoxElement) {
     resolveProgressBoxElement.style.display = "flex";
   }
+  if (resolveProgressSpinnerElement) {
+    resolveProgressSpinnerElement.style.display = "inline-block";
+  }
+  if (retryResolveButtonElement) {
+    retryResolveButtonElement.style.display = "none";
+    retryResolveButtonElement.onclick = null;
+  }
   if (resolveProgressTextElement) {
     resolveProgressTextElement.textContent = `Upgrading Resolutions: 0/${queue.length}`;
   }
 
   let completed = 0;
-  const batchSize = 4;
+  const batchSize = 2; // Reduced to prevent rate-limiting
 
   for (let index = 0; index < queue.length; index += batchSize) {
     const batch = queue.slice(index, index + batchSize);
@@ -1955,6 +2120,7 @@ async function processFlickrQueue(imageCards) {
         }
 
         if (nextUrl !== originalSrc || (maxData?.width && maxData?.height)) {
+          window.flickrUpgradedCount += 1;
           updateResolvedImageData(item.clientId, maxData);
           item.card.dataset.url = nextUrl;
           if (maxData?.width && maxData?.height) {
@@ -1965,7 +2131,6 @@ async function processFlickrQueue(imageCards) {
           if (item.linkEl) {
             item.linkEl.href = nextUrl;
             item.linkEl.textContent = trimUrlForDisplay(nextUrl);
-            item.linkEl.classList.add("res-upgraded");
           }
           if (item.viewBtn) {
             item.viewBtn.href = nextUrl;
@@ -1977,12 +2142,21 @@ async function processFlickrQueue(imageCards) {
             if (resLabel) {
               resLabel.textContent = `${maxData.width} × ${maxData.height}`;
               resLabel.classList.add("res-upgraded");
-              resLabel.textContent = `Source ${maxData.width} x ${maxData.height}`;
+              resLabel.textContent = `Source ${maxData.width} × ${maxData.height}`;
             }
           }
+          if (maxData?.width && maxData?.height) {
+            const finalResLabel = item.card.querySelector(".card-dimensions");
+            if (finalResLabel) {
+              finalResLabel.textContent = `Source ${maxData.width} × ${maxData.height}`;
+            }
+          }
+        } else {
+          window.flickrFailedItems.push(item);
         }
       } catch (error) {
         console.error("[IEP Debug] Queue item failed:", error);
+        window.flickrFailedItems.push(item);
       } finally {
         completed += 1;
         if (resolveProgressTextElement) {
@@ -1992,24 +2166,39 @@ async function processFlickrQueue(imageCards) {
     }));
 
     if (neededNetwork && index + batchSize < queue.length) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 600)); // Gentle pacing
     }
   }
 
-  if (resolveProgressBoxElement) {
-    resolveProgressBoxElement.style.display = "none";
-  }
   state.isResolvingFlickrQueue = false;
   state.resolveQueuePromise = null;
   refreshControlState();
+
+  if (resolveProgressSpinnerElement) {
+    resolveProgressSpinnerElement.style.display = "none";
+  }
+  if (resolveProgressTextElement) {
+    resolveProgressTextElement.textContent = `Images upgraded ${window.flickrUpgradedCount} | Failed ${window.flickrFailedItems.length}`;
+  }
+  if (window.flickrFailedItems.length > 0 && retryResolveButtonElement) {
+    retryResolveButtonElement.style.display = "inline-block";
+    retryResolveButtonElement.onclick = () => {
+      state.resolveQueuePromise = processFlickrQueue([], true);
+      void state.resolveQueuePromise;
+    };
+  }
 }
 
 async function loadGallerySettings() {
   const defaults = {
+    persistentMode: true,
     autoCheckDuplicates: false,
     hideDeleteWarning: false,
     downloadMode: "zip",
-    stickyToolbar: true
+    stickyToolbar: true,
+    themeStyle: "Rich",
+    windowScale: "Big",
+    galleryPagination: "Unlimited"
   };
 
   try {
@@ -2032,10 +2221,27 @@ async function loadGallerySettings() {
         : defaults.downloadMode,
       stickyToolbar: typeof filters.stickyToolbar === "boolean"
         ? filters.stickyToolbar
-        : defaults.stickyToolbar
+        : defaults.stickyToolbar,
+      windowScale: ["small", "medium", "big"].includes(String(filters.windowScale || "").toLowerCase())
+        ? String(filters.windowScale).toLowerCase()
+        : String(defaults.windowScale).toLowerCase(),
+      themeStyle: ["minimal", "standard", "rich"].includes(String(filters.themeStyle || "").toLowerCase())
+        ? String(filters.themeStyle).toLowerCase()
+        : String(defaults.themeStyle).toLowerCase(),
+      galleryPagination: ["50", "100", "200", "500", "unlimited"].includes(String(filters.galleryPagination || "").toLowerCase())
+        ? String(filters.galleryPagination).toLowerCase()
+        : String(defaults.galleryPagination).toLowerCase()
     };
   } catch (_error) {
-    return defaults;
+    return {
+      autoCheckDuplicates: defaults.autoCheckDuplicates,
+      hideDeleteWarning: defaults.hideDeleteWarning,
+      downloadMode: defaults.downloadMode,
+      stickyToolbar: defaults.stickyToolbar,
+      windowScale: String(defaults.windowScale).toLowerCase(),
+      themeStyle: String(defaults.themeStyle).toLowerCase(),
+      galleryPagination: String(defaults.galleryPagination).toLowerCase()
+    };
   }
 }
 

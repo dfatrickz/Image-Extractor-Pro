@@ -197,6 +197,10 @@
         downloadMode: "zip",
         namingScheme: "original",
         subfolderName: "",
+        persistentMode: true,
+        windowScale: "big",
+        themeStyle: "rich",
+        galleryPagination: "unlimited",
         disablePageScrolling: false,
         autoCheckDuplicates: false,
         stickyToolbar: true,
@@ -223,6 +227,16 @@
         namingScheme: ["original", "sequential"].includes(String(filters.namingScheme || "").toLowerCase())
           ? String(filters.namingScheme).toLowerCase()
           : defaultFilters.namingScheme,
+        persistentMode: typeof filters.persistentMode === "boolean" ? filters.persistentMode : defaultFilters.persistentMode,
+        windowScale: ["small", "medium", "big"].includes(String(filters.windowScale || "").toLowerCase())
+          ? String(filters.windowScale).toLowerCase()
+          : defaultFilters.windowScale,
+        themeStyle: ["minimal", "standard", "rich"].includes(String(filters.themeStyle || "").toLowerCase())
+          ? String(filters.themeStyle).toLowerCase()
+          : defaultFilters.themeStyle,
+        galleryPagination: ["50", "100", "200", "500", "unlimited"].includes(String(filters.galleryPagination || "").toLowerCase())
+          ? String(filters.galleryPagination).toLowerCase()
+          : defaultFilters.galleryPagination,
         showFab: typeof filters.showFab === "boolean" ? filters.showFab : defaultFilters.showFab,
         startMinimized: typeof filters.startMinimized === "boolean" ? filters.startMinimized : defaultFilters.startMinimized
       };
@@ -286,7 +300,7 @@
     applyProfileFilters(filters) {
       const nextFilters = this.cloneFilters(filters);
       this.state.filters = nextFilters;
-      this.state.showFab = Boolean(nextFilters.showFab);
+      this.state.showFab = Boolean(nextFilters.showFab || nextFilters.persistentMode);
     }
 
     applyActiveProfileFilters() {
@@ -325,12 +339,30 @@
           return;
         }
 
-        this.state.profileData = this.createDefaultProfileData(this.state.filters);
+        this.state.profileData = this.createDefaultProfileData(this.normalizeFilters({
+          ...this.state.filters,
+          persistentMode: true,
+          stickyToolbar: true,
+          themeStyle: "Rich",
+          windowScale: "Big",
+          galleryPagination: "Unlimited"
+        }));
         this.applyActiveProfileFilters();
         this.state.minimized = Boolean(this.state.filters.startMinimized);
+        this.saveManagerToStorage();
       } catch (error) {
         // Ignore storage failures and fall back to defaults.
+        this.state.profileData = this.createDefaultProfileData(this.normalizeFilters({
+          ...this.state.filters,
+          persistentMode: true,
+          stickyToolbar: true,
+          themeStyle: "Rich",
+          windowScale: "Big",
+          galleryPagination: "Unlimited"
+        }));
+        this.applyActiveProfileFilters();
         this.state.minimized = Boolean(this.state.filters.startMinimized);
+        this.saveManagerToStorage();
       }
     }
 
@@ -423,7 +455,8 @@
         closeButton: this.shadowRoot.getElementById("iepCloseButton"),
         settingsModal: this.shadowRoot.getElementById("iepSettingsModal"),
         settingsBackdrop: this.shadowRoot.getElementById("iepSettingsBackdrop"),
-        settingsDoneButton: this.shadowRoot.getElementById("iepSettingsDoneButton"),
+        settingsCloseXButton: this.shadowRoot.getElementById("settings-close-x"),
+        settingsHorizontalWrapper: this.shadowRoot.querySelector(".settings-horizontal-wrapper"),
         profileSelect: this.shadowRoot.getElementById("iepProfileSelect"),
         saveProfileButton: this.shadowRoot.getElementById("iepSaveProfileBtn"),
         deleteProfileButton: this.shadowRoot.getElementById("iepDeleteProfileBtn"),
@@ -432,6 +465,10 @@
         subfolderNameInput: this.shadowRoot.getElementById("iepSubfolderName"),
         imageOriginSelect: this.shadowRoot.getElementById("iepImageOrigin"),
         themeSelect: this.shadowRoot.getElementById("iepTheme"),
+        persistentModeToggle: this.shadowRoot.getElementById("iepPersistentMode"),
+        windowScaleSelect: this.shadowRoot.getElementById("iepWindowScale"),
+        themeStyleSelect: this.shadowRoot.getElementById("iepThemeStyle"),
+        galleryPaginationSelect: this.shadowRoot.getElementById("iepGalleryPagination"),
         disablePageScrollingToggle: this.shadowRoot.getElementById("iepDisablePageScrolling"),
         autoCheckDuplicatesToggle: this.shadowRoot.getElementById("iepAutoCheckDuplicates"),
         stickyToolbarToggle: this.shadowRoot.getElementById("iepStickyToolbar"),
@@ -492,9 +529,18 @@
         this.closeSettingsModal();
       });
 
-      this.elements.settingsDoneButton.addEventListener("click", () => {
+      this.elements.settingsCloseXButton.addEventListener("click", () => {
         this.closeSettingsModal();
       });
+
+      if (this.elements.settingsHorizontalWrapper) {
+        this.elements.settingsHorizontalWrapper.addEventListener("wheel", (event) => {
+          if (event.deltaY !== 0) {
+            event.preventDefault();
+            this.elements.settingsHorizontalWrapper.scrollLeft += event.deltaY;
+          }
+        }, { passive: false });
+      }
 
       this.elements.profileSelect.addEventListener("change", () => {
         const nextActiveId = this.elements.profileSelect.value;
@@ -598,6 +644,22 @@
       });
 
       this.elements.themeSelect.addEventListener("change", () => {
+        this.updateFiltersFromInputs();
+      });
+
+      this.elements.persistentModeToggle.addEventListener("change", () => {
+        this.updateFiltersFromInputs();
+      });
+
+      this.elements.windowScaleSelect.addEventListener("change", () => {
+        this.updateFiltersFromInputs();
+      });
+
+      this.elements.themeStyleSelect.addEventListener("change", () => {
+        this.updateFiltersFromInputs();
+      });
+
+      this.elements.galleryPaginationSelect.addEventListener("change", () => {
         this.updateFiltersFromInputs();
       });
 
@@ -760,6 +822,8 @@
       this.elements.fab.hidden = !this.state.minimized || !this.state.showFab;
       this.elements.settingsModal.hidden = !this.state.settingsMode;
       this.elements.shell.dataset.theme = this.state.filters.theme || "system";
+      this.elements.shell.classList.remove("iep-scale-small", "iep-scale-medium", "iep-scale-big");
+      this.elements.shell.classList.add(`iep-scale-${this.state.filters.windowScale}`);
       this.elements.settingsButton.setAttribute("aria-pressed", this.state.settingsMode ? "true" : "false");
       this.elements.settingsButton.classList.toggle("iep-icon-active", this.state.settingsMode);
       this.elements.panelHeader.classList.toggle("is-dragging", this.dragState?.kind === "panel");
@@ -770,6 +834,10 @@
       this.elements.namingSchemeSelect.value = this.state.filters.namingScheme;
       this.elements.imageOriginSelect.value = this.state.filters.imageOrigin;
       this.elements.themeSelect.value = this.state.filters.theme;
+      this.elements.persistentModeToggle.checked = Boolean(this.state.filters.persistentMode);
+      this.elements.windowScaleSelect.value = this.state.filters.windowScale;
+      this.elements.themeStyleSelect.value = this.state.filters.themeStyle;
+      this.elements.galleryPaginationSelect.value = this.state.filters.galleryPagination;
       this.elements.disablePageScrollingToggle.checked = Boolean(this.state.filters.disablePageScrolling);
       this.elements.autoCheckDuplicatesToggle.checked = Boolean(this.state.filters.autoCheckDuplicates);
       this.elements.stickyToolbarToggle.checked = Boolean(this.state.filters.stickyToolbar);
@@ -800,6 +868,10 @@
       this.elements.namingSchemeSelect.disabled = this.state.busy;
       this.elements.imageOriginSelect.disabled = this.state.busy;
       this.elements.themeSelect.disabled = this.state.busy;
+      this.elements.persistentModeToggle.disabled = this.state.busy;
+      this.elements.windowScaleSelect.disabled = this.state.busy;
+      this.elements.themeStyleSelect.disabled = this.state.busy;
+      this.elements.galleryPaginationSelect.disabled = this.state.busy;
       this.elements.disablePageScrollingToggle.disabled = this.state.busy;
       this.elements.autoCheckDuplicatesToggle.disabled = this.state.busy;
       this.elements.stickyToolbarToggle.disabled = this.state.busy;
@@ -809,7 +881,6 @@
       this.elements.startMinimizedToggle.disabled = this.state.busy;
       this.elements.rateLimitInput.disabled = this.state.busy;
       this.elements.individualWarningThresholdInput.disabled = this.state.busy;
-      this.elements.settingsDoneButton.disabled = this.state.busy;
       this.elements.profileSelect.disabled = this.state.busy;
       this.elements.saveProfileButton.disabled = this.state.busy;
       this.elements.deleteProfileButton.disabled = this.state.busy || this.state.profileData.activeId === "default";
@@ -933,13 +1004,17 @@
       this.state.filters.namingScheme = this.elements.namingSchemeSelect.value || "original";
       this.state.filters.imageOrigin = this.elements.imageOriginSelect.value || "all";
       this.state.filters.theme = this.elements.themeSelect.value || "system";
+      this.state.filters.persistentMode = Boolean(this.elements.persistentModeToggle.checked);
+      this.state.filters.windowScale = this.elements.windowScaleSelect.value || "big";
+      this.state.filters.themeStyle = this.elements.themeStyleSelect.value || "standard";
+      this.state.filters.galleryPagination = this.elements.galleryPaginationSelect.value || "unlimited";
       this.state.filters.downloadMode = this.elements.downloadModeRadios.find((radio) => radio.checked)?.value || "zip";
       this.state.filters.disablePageScrolling = Boolean(this.elements.disablePageScrollingToggle.checked);
       this.state.filters.autoCheckDuplicates = Boolean(this.elements.autoCheckDuplicatesToggle.checked);
       this.state.filters.stickyToolbar = Boolean(this.elements.stickyToolbarToggle.checked);
       this.state.filters.disableSiteControls = Boolean(this.elements.disableSiteControlsToggle.checked);
       this.state.filters.hoverDownloadEnabled = Boolean(this.elements.hoverDownloadToggle.checked);
-      this.state.showFab = Boolean(this.elements.showFabToggle.checked);
+      this.state.showFab = Boolean(this.elements.showFabToggle.checked || this.state.filters.persistentMode);
       this.state.filters.startMinimized = Boolean(this.elements.startMinimizedToggle.checked);
       this.state.filters.rateLimitMs = Math.max(0, Number.parseInt(this.elements.rateLimitInput.value || "0", 10) || 0);
       this.state.filters.individualDownloadWarningThreshold = Math.max(0, Number.parseInt(this.elements.individualWarningThresholdInput.value || "30", 10) || 0);
@@ -1517,8 +1592,8 @@
 
       const fabWidth = 56;
       const fabHeight = 56;
-      const panelWidth = 392;
-      const panelHeight = Math.max(this.elements.panel.offsetHeight || 620, 420);
+      const panelWidth = this.elements.panel.offsetWidth || 460;
+      const panelHeight = this.elements.panel.offsetHeight || 620;
       const viewportWidth = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
       const viewportHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
 
@@ -1620,6 +1695,30 @@
               --iep-fab-gradient: linear-gradient(135deg, #1e293b, #2563eb);
               --iep-selection-overlay: rgba(96, 165, 250, 0.08);
             }
+            .iep-shell[data-theme="system"] {
+              color-scheme: dark;
+              --iep-bg-primary: #0f172a;
+              --iep-bg-secondary: #15233a;
+              --iep-surface: rgba(15, 23, 42, 0.96);
+              --iep-surface-soft: #172235;
+              --iep-surface-strong: #111b2d;
+              --iep-text-main: #e2e8f0;
+              --iep-text-muted: #cbd5e1;
+              --iep-text-soft: #94a3b8;
+              --iep-border: rgba(148, 163, 184, 0.16);
+              --iep-border-strong: rgba(148, 163, 184, 0.26);
+              --iep-accent: #60a5fa;
+              --iep-accent-strong: #3b82f6;
+              --iep-accent-soft: rgba(96, 165, 250, 0.18);
+              --iep-input-bg: #1e293b;
+              --iep-input-text: #f8fafc;
+              --input-bg: #1e293b;
+              --input-text: #f8fafc;
+              --input-border: #334155;
+              --input-placeholder: #94a3b8;
+            }
+            .iep-shell[data-theme="system"] .iep-settings-panel h3,
+            .iep-shell[data-theme="system"] .iep-dark-label { color: #f0f0f0 !important; }
           }
 
           .iep-shell[data-theme="light"] { color-scheme: light; --iep-bg-primary: #f5f9ff; --iep-bg-secondary: #edf4ff; --iep-surface: rgba(255, 255, 255, 0.96); --iep-surface-soft: #f8fafc; --iep-surface-strong: #ffffff; --iep-text-main: #0f172a; --iep-text-muted: #475569; --iep-text-soft: #64748b; --iep-border: rgba(148, 163, 184, 0.18); --iep-border-strong: rgba(148, 163, 184, 0.3); --iep-accent: #2563eb; --iep-accent-strong: #1d4ed8; --iep-accent-soft: rgba(37, 99, 235, 0.12); --iep-header-bg: linear-gradient(180deg, #eef4ff, #ffffff); --iep-icon-bg: rgba(255, 255, 255, 0.88); --iep-icon-active-bg: #eff6ff; --iep-button-secondary: #e2e8f0; --iep-success-bg: #ecfdf5; --iep-success-border: rgba(16, 185, 129, 0.24); --iep-success-text: #065f46; --iep-error-bg: #fef2f2; --iep-error-border: rgba(239, 68, 68, 0.22); --iep-error-text: #991b1b; --iep-info-bg: #eff6ff; --iep-info-border: rgba(37, 99, 235, 0.22); --iep-info-text: #1d4ed8; --iep-shadow: 0 28px 60px rgba(15, 23, 42, 0.22); --iep-shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.08); --iep-backdrop: rgba(15, 23, 42, 0.58); --iep-fab-gradient: linear-gradient(135deg, #0f172a, #1d4ed8); --iep-selection-overlay: rgba(37, 99, 235, 0.05); }
@@ -1637,6 +1736,9 @@
           .iep-fab-icon::before { width: 8px; height: 8px; border-radius: 999px; top: 4px; right: 4px; }
           .iep-fab-icon::after { left: 3px; right: 3px; bottom: 4px; height: 7px; clip-path: polygon(0 100%, 28% 35%, 48% 68%, 68% 18%, 100% 100%); }
           .iep-panel { position: fixed; width: 392px; max-height: min(620px, calc(100vh - 24px)); display: flex; flex-direction: column; border-radius: 24px; background: linear-gradient(180deg, var(--iep-surface-strong), var(--iep-bg-primary)); color: var(--iep-text-main); border: 1px solid var(--iep-border-strong); box-shadow: var(--iep-shadow); overflow: hidden; }
+          .iep-shell.iep-scale-small .iep-panel { width: 344px; max-height: min(540px, calc(100vh - 24px)); }
+          .iep-shell.iep-scale-medium .iep-panel { width: 392px; max-height: min(620px, calc(100vh - 24px)); }
+          .iep-shell.iep-scale-big .iep-panel { width: 460px; max-height: min(760px, calc(100vh - 24px)); }
           .iep-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 18px 14px; background: var(--iep-header-bg); border-bottom: 1px solid var(--iep-border); cursor: grab; user-select: none; }
           .iep-panel-header.is-dragging { cursor: grabbing; }
           .iep-header-controls { display: grid; justify-items: end; gap: 8px; flex-shrink: 0; }
@@ -1665,7 +1767,8 @@
           .iep-field, .iep-inline-group, .iep-settings-panel, .iep-settings-stack { display: grid; gap: 8px; }
           .iep-field-full { grid-column: 1 / -1; }
           .iep-field span, .iep-field-label { font-size: 12px; font-weight: 600; color: var(--iep-text-muted); }
-          .iep-field input, .iep-select { width: 100%; box-sizing: border-box; border-radius: 12px; border: 1px solid var(--iep-border-strong); background: var(--iep-surface-strong); color: var(--iep-text-main); padding: 10px 12px; font-size: 13px; outline: none; }
+          .iep-field input, .iep-select { width: 100%; box-sizing: border-box; border-radius: 12px; border: 1px solid var(--input-border, var(--iep-border-strong)); background: var(--input-bg, var(--iep-surface-strong)); color: var(--input-text, var(--iep-text-main)); padding: 10px 12px; font-size: 13px; outline: none; }
+          .iep-field input::placeholder { color: var(--input-placeholder, var(--iep-text-soft)); }
           .iep-field input:focus, .iep-select:focus { border-color: var(--iep-accent); box-shadow: 0 0 0 4px var(--iep-accent-soft); }
           .iep-format-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
           .iep-format-grid-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1681,7 +1784,8 @@
           .iep-selection-label { font-weight: 600; color: var(--iep-text-main); word-break: break-word; }
           .iep-preview-count { font-size: 15px; font-weight: 700; color: var(--iep-text-main); }
           .iep-preview-meta { color: var(--iep-text-soft); font-size: 12px; }
-          .iep-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+          .iep-actions { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 10px; }
+          .iep-actions > .iep-button { flex: 1 1 0; min-width: 0; white-space: nowrap; text-align: center; }
           .iep-status { border-radius: 16px; border: 1px solid var(--iep-border); background: var(--iep-surface-soft); padding: 12px 14px; }
           .iep-status[data-tone="success"] { background: var(--iep-success-bg); border-color: var(--iep-success-border); color: var(--iep-success-text); }
           .iep-status[data-tone="error"] { background: var(--iep-error-bg); border-color: var(--iep-error-border); color: var(--iep-error-text); }
@@ -1689,12 +1793,16 @@
           .iep-status p { margin: 0; font-size: 13px; line-height: 1.5; }
           .iep-settings-modal { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; }
           .iep-settings-backdrop { position: absolute; inset: 0; background: var(--iep-backdrop); }
-          .iep-settings-dialog { position: relative; width: min(1000px, calc(100vw - 48px)); max-height: min(600px, calc(100vh - 48px)); display: grid; gap: 16px; padding: 20px; border-radius: 22px; background: var(--iep-surface-strong); border: 1px solid var(--iep-border); box-shadow: 0 32px 80px rgba(15, 23, 42, 0.32); overflow: auto; }
+          .iep-settings-dialog { position: relative; width: min(1080px, calc(100vw - 48px)); max-height: min(640px, calc(100vh - 48px)); height: 100%; display: grid; gap: 16px; padding: 20px; border-radius: 22px; background: var(--iep-surface-strong); border: 1px solid var(--iep-border); box-shadow: 0 32px 80px rgba(15, 23, 42, 0.32); overflow: hidden; }
+          .iep-settings-close-x { position: absolute; top: 32px; right: 32px; width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--iep-border); background: var(--iep-surface-strong); color: var(--iep-text-main); font-size: 22px; line-height: 1; cursor: pointer; z-index: 2; box-shadow: var(--iep-shadow-soft); }
           .iep-modal-header { display: grid; gap: 4px; }
           .iep-modal-header h2 { margin: 0; font-size: 18px; }
           .iep-modal-header p { margin: 0; color: var(--iep-text-soft); font-size: 13px; }
-          .iep-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-          .iep-settings-panel { background: var(--iep-surface); border: 1px solid var(--iep-border); border-radius: 18px; padding: 14px; box-shadow: var(--iep-shadow-soft); }
+          .settings-horizontal-wrapper { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden !important; align-items: stretch !important; gap: 20px; height: 100%; width: 100%; padding-bottom: 6px; }
+          .settings-horizontal-wrapper > .iep-settings-panel { flex: 1 1 0 !important; min-width: 280px !important; max-width: none !important; }
+          .iep-settings-panel { background: var(--iep-surface); border: 1px solid var(--iep-border); border-radius: 18px; padding: 14px; box-shadow: var(--iep-shadow-soft); overflow-y: auto; overflow-x: hidden; max-height: 100%; display: flex; flex-direction: column; }
+          .iep-settings-panel::-webkit-scrollbar { width: 6px; }
+          .iep-settings-panel::-webkit-scrollbar-thumb { background: var(--iep-border-strong); border-radius: 10px; }
           .iep-settings-panel h3 { margin: 0; font-size: 14px; }
           .iep-settings-panel p { margin: 0; color: var(--iep-text-soft); font-size: 11px; line-height: 1.4; }
           .iep-settings-dialog .iep-field span, .iep-settings-dialog .iep-field-label, .iep-settings-dialog .iep-toggle-row, .iep-settings-dialog .iep-radio-option, .iep-settings-dialog .iep-button { font-size: 11px; }
@@ -1705,7 +1813,7 @@
           #iepSurferHoverBtn svg, .iep-surfer-hover-btn svg { pointer-events: none; }
           .iep-surfer-hover-btn.is-success { background: #16a34a; }
           .iep-selection-outline { position: fixed; border: 2px solid var(--iep-accent); background: var(--iep-accent-soft); box-shadow: 0 0 0 9999px var(--iep-selection-overlay); border-radius: 8px; pointer-events: none; }
-          @media (max-width: 860px) { .iep-settings-grid { grid-template-columns: minmax(0, 1fr); } }
+          @media (max-width: 860px) { .iep-settings-panel { flex-basis: 260px; min-width: 260px; } }
           [hidden] { display: none !important; }
         </style>
         <div id="iepShell" class="${shellClassName}" data-theme="system">
@@ -1720,7 +1828,110 @@
           </section>
           <button id="iepSurferHoverBtn" class="iep-surfer-hover-btn" type="button" aria-label="Download hovered image" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M8 10l4 4 4-4"></path><path d="M5 20h14"></path></svg></button>
           <div id="iepSelectionOutline" class="iep-selection-outline" hidden></div>
-          <div id="iepSettingsModal" class="iep-settings-modal" hidden><div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div><section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings"><div class="iep-modal-header"><h2>Settings</h2><p>Configure download behavior and limits</p></div><div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);"><select id="iepProfileSelect" style="flex: 1; background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 6px;"></select><button id="iepSaveProfileBtn" title="Save as New Profile" style="background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Save New</button><button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button></div><div class="iep-settings-grid"><section class="iep-settings-panel"><h3>Download Preferences</h3><p>Choose how the gallery should package and label the selected images.</p><div class="iep-settings-stack"><div class="iep-inline-group"><span class="iep-field-label">Default Download Mode</span><div class="iep-radio-group"><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label><label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label></div></div><label class="iep-field"><span>Subfolder Name</span><input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)"><div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Overrides automatic naming. All images will save to this single folder/ZIP.</div></label><label class="iep-dark-label" style="display: block; margin-top: 10px; font-size: 13px;">File Naming Scheme</label><select id="iep-naming-scheme" style="background: var(--bg-secondary); color: white; border: 1px solid #334155; border-radius: 4px; padding: 4px; width: 100%; margin-top: 4px;"><option value="original">Original Name (Default)</option><option value="sequential">Sequential (1, 2, 3...)</option></select><label class="iep-field"><span>Theme</span><select id="iepTheme" class="iep-select"><option value="system">System (Default)</option><option value="dark">Dark</option><option value="light">Light</option></select></label><label class="iep-field"><span>Image Origin</span><select id="iepImageOrigin" class="iep-select"><option value="all">All</option><option value="rendered">Rendered</option><option value="source">Source</option></select></label></div></section><section class="iep-settings-panel"><h3>Safety &amp; Behavior</h3><p>Controls for UI visibility and guarded download behavior in the gallery.</p><div class="iep-settings-stack"><label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label><label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label><label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab</span></label><label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label><label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox" checked><span>Start Minimized</span></label><label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label><label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label><h3>Gallery Preferences</h3><label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking (Gallery)</span></label><label class="iep-toggle-row"><input id="iepStickyToolbar" type="checkbox" checked><span>Sticky Toolbar</span></label></div></section></div><div class="iep-actions"><button id="iepSettingsDoneButton" class="iep-button iep-button-primary" type="button">Done</button></div></section></div>
+          <div id="iepSettingsModal" class="iep-settings-modal" hidden>
+            <div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div>
+            <section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings">
+              <div class="iep-modal-header">
+                <h2>Settings</h2>
+                <p>Configure download behavior, gallery layout, and the persistent launcher.</p>
+              </div>
+              <div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);">
+                <select id="iepProfileSelect" style="flex: 1; background: var(--bg-secondary, #1e293b); color: white; border: 1px solid #334155; border-radius: 4px; padding: 6px;"></select>
+                <button id="iepSaveProfileBtn" title="Save as New Profile" style="background: #2563eb; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Save New</button>
+                <button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button>
+              </div>
+              <button id="settings-close-x" class="iep-settings-close-x" type="button" aria-label="Close settings">&times;</button>
+              <div class="iep-settings-grid settings-horizontal-wrapper">
+                <section class="iep-settings-panel">
+                  <h3>Download Preferences</h3>
+                  <p>Choose how the gallery should package and label the selected images.</p>
+                  <div class="iep-settings-stack">
+                    <div class="iep-inline-group">
+                      <span class="iep-field-label">Default Download Mode</span>
+                      <div class="iep-radio-group">
+                        <label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label>
+                        <label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label>
+                      </div>
+                    </div>
+                    <label class="iep-field">
+                      <span>Subfolder Name</span>
+                      <input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)">
+                      <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Overrides automatic naming. All images will save to this single folder/ZIP.</div>
+                    </label>
+                    <label class="iep-dark-label" style="display: block; margin-top: 10px; font-size: 13px;">File Naming Scheme</label>
+                    <select id="iep-naming-scheme" style="background: var(--bg-secondary); color: white; border: 1px solid #334155; border-radius: 4px; padding: 4px; width: 100%; margin-top: 4px;">
+                      <option value="original">Original Name (Default)</option>
+                      <option value="sequential">Sequential (1, 2, 3...)</option>
+                    </select>
+                    <label class="iep-field">
+                      <span>Image Origin</span>
+                      <select id="iepImageOrigin" class="iep-select">
+                        <option value="all">All</option>
+                        <option value="rendered">Rendered</option>
+                        <option value="source">Source</option>
+                      </select>
+                    </label>
+                  </div>
+                </section>
+                <section class="iep-settings-panel">
+                  <h3>Safety &amp; Behavior</h3>
+                  <p>Controls for global injection, Fast Grab behavior, and duplicate analysis defaults.</p>
+                  <div class="iep-settings-stack">
+                    <label class="iep-toggle-row"><input id="iepPersistentMode" type="checkbox"><span>Enable persistent floating icon on all websites</span></label>
+                    <label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label>
+                    <label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label>
+                    <label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab</span></label>
+                    <label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label>
+                    <label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox" checked><span>Start Minimized</span></label>
+                    <label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking</span></label>
+                    <label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label>
+                    <label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label>
+                  </div>
+                </section>
+                <section class="iep-settings-panel">
+                  <h3>Appearance</h3>
+                  <p>Control the launcher size and how the gallery presents large result sets.</p>
+                  <div class="iep-settings-stack">
+                    <label class="iep-toggle-row"><input id="iepStickyToolbar" type="checkbox" checked><span>Sticky Toolbar</span></label>
+                    <label class="iep-field">
+                      <span>Window Size</span>
+                      <select id="iepWindowScale" class="iep-select">
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="big">Big</option>
+                      </select>
+                    </label>
+                    <label class="iep-field">
+                      <span>Theme</span>
+                      <select id="iepTheme" class="iep-select">
+                        <option value="system">System (Default)</option>
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                      </select>
+                    </label>
+                    <label class="iep-field">
+                      <span>Theme Style</span>
+                      <select id="iepThemeStyle" class="iep-select">
+                        <option value="minimal">Minimal</option>
+                        <option value="standard">Standard</option>
+                        <option value="rich">Rich</option>
+                      </select>
+                    </label>
+                    <label class="iep-field">
+                      <span>Images per page</span>
+                      <select id="iepGalleryPagination" class="iep-select">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                        <option value="unlimited">Unlimited</option>
+                      </select>
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </div>
         </div>
       `;
     }
@@ -2450,7 +2661,7 @@ async function registerCandidates(imageMap, candidates, context) {
     }
 
     const match = thumbUrl.match(/live\.staticflickr\.com\/(\d+)\/(\d+)_([a-fA-F0-9]+)/);
-    if (!match) return saveAndReturn(fallback);
+    if (!match) return fallback;
 
     const serverId = match[1];
     const photoId = match[2];
@@ -2504,20 +2715,72 @@ async function registerCandidates(imageMap, candidates, context) {
       return null;
     }
 
+    const isFlickrPage = window.location.hostname.includes("flickr.com");
+    const rawDom = isFlickrPage ? document.documentElement.innerHTML : "";
     const cacheData = typeof window.flickrNetworkCache !== "undefined" ? JSON.stringify(window.flickrNetworkCache) : "";
-    const fastResult = scanTextForUrls(cacheData + " " + document.documentElement.innerHTML, premiumSizes);
-    if (fastResult) return saveAndReturn(fastResult);
+    const searchGround = cacheData + " " + rawDom;
 
+    console.log(`[IEP Debug] Deep Scanning:`, thumbUrl);
+    const fastResult = scanTextForUrls(searchGround, premiumSizes);
+    if (fastResult) {
+      console.log(`[IEP Debug] 🟢 FAST PATH SUCCESS!`);
+      return saveAndReturn(fastResult);
+    }
+
+    // --- 2. BACKGROUND FETCH PATH ---
+    console.log(`[IEP Debug] 🟡 [ID: ${photoId}] Fast Path missed. Fetching HTML...`);
+    const controller = new AbortController();
+    let timeoutId;
     try {
       const pageUrl = `https://www.flickr.com/photo.gne?id=${photoId}`;
-      const res = await fetch(pageUrl, { credentials: "include" });
-      const fetchResult = scanTextForUrls(await res.text(), allSizes);
-      if (fetchResult && fetchResult.url !== thumbUrl) return saveAndReturn(fetchResult);
+
+      // 8-second timeout to prevent tarpitting
+      timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      console.log(`[IEP Debug] ⏳ [ID: ${photoId}] Firing request...`);
+      const res = await fetch(pageUrl, {
+        credentials: "include",
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      if (false) {
+      console.warn(`[IEP Debug] 🛑 TIMEOUT: Flickr delayed the response for ${photoId}. Aborting to prevent freeze.`);
+      console.error(`[IEP Debug] ❌ Background Fetch FAILED for ${photoId}:`, e);
+      console.log(`[IEP Debug] 📥 [ID: ${photoId}] Headers received. Status: ${res.status}`);
+
+      }
+      if (!res.ok) {
+        console.warn(`[IEP Debug] ⚠️ [ID: ${photoId}] Bad HTTP Status: ${res.status}`);
+      }
+
+      console.log(`[IEP Debug] ⏳ [ID: ${photoId}] Reading text body...`);
+      const htmlText = await res.text();
+      console.log(`[IEP Debug] 📖 [ID: ${photoId}] Text read complete (${htmlText.length} chars). Scanning...`);
+
+      const fetchResult = scanTextForUrls(htmlText, allSizes);
+      if (fetchResult) {
+        console.log(`[IEP Debug] 🟢 [ID: ${photoId}] SUCCESS! Upgraded.`);
+        console.log(`[IEP Debug] 🟢 FETCH SUCCESS!`);
+        return saveAndReturn(fetchResult);
+      } else {
+        console.log(`[IEP Debug] ❌ [ID: ${photoId}] Scanned, but no max sizes found.`);
+      }
     } catch (e) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (e.name === "AbortError") {
+        console.warn(`[IEP Debug] 🛑 TIMEOUT: Flickr delayed the response for ${photoId}. Aborting to prevent freeze.`);
+        console.error(`[IEP Debug] 🛑 [ID: ${photoId}] FETCH TIMED OUT (10s). Flickr is throttling or hanging the connection.`);
+      } else {
+        console.error(`[IEP Debug] ❌ Background Fetch FAILED for ${photoId}:`, e);
+        console.error(`[IEP Debug] ❌ [ID: ${photoId}] Fetch FAILED:`, e.message);
+      }
       console.error("[IEP Debug] ❌ Background Fetch FAILED:", e);
     }
 
-    return saveAndReturn(fallback);
+    console.log(`[IEP Debug] ⚠️ ALL METHODS FAILED.`);
+    console.log(`[IEP Debug] ⚠️ [ID: ${photoId}] ALL METHODS FAILED.`);
+    return fallback;
   };
 
   function getFlickrHighRes(thumbUrl) {
@@ -3459,6 +3722,12 @@ async function registerCandidates(imageMap, candidates, context) {
 
   const controller = new FloatingExtractorController();
   window.__imageExtractorProContentController = controller;
+  void controller.storageReady.then(() => {
+    if (controller.state.filters.persistentMode) {
+      return controller.mountUi();
+    }
+    return undefined;
+  });
 
   ["mousedown", "pointerdown", "mouseup", "pointerup"].forEach((eventName) => {
     document.addEventListener(eventName, (event) => {

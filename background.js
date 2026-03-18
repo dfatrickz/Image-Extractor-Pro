@@ -4,6 +4,8 @@ const EXTRACTION_KEY_PREFIX = "iepExtraction:";
 const EXTRACTION_INDEX_KEY = "iepExtractionIndex";
 const MAX_STORED_SESSIONS = 5;
 const CONTEXT_MENU_ID = "iep-extract-image";
+let persistentModeEnabled = true;
+let persistentModeLoaded = false;
 
 api.runtime.onInstalled.addListener(() => {
   api.contextMenus.create({
@@ -16,6 +18,8 @@ api.runtime.onInstalled.addListener(() => {
     }
   });
 });
+
+void refreshPersistentModeCache();
 
 api.action.onClicked.addListener(async (tab) => {
   await toggleFloatingUi(tab);
@@ -47,6 +51,28 @@ api.runtime.onMessage.addListener((message, sender) => {
     default:
       return undefined;
   }
+});
+
+api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete") {
+    void maybeInjectPersistentUi(tabId, tab?.url || "");
+  }
+});
+
+api.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || (!changes.iepSettingsManager && !changes.iepFilters)) {
+    return;
+  }
+
+  void (async () => {
+    const enabled = await refreshPersistentModeCache();
+    if (!enabled) {
+      return;
+    }
+
+    const tabs = await api.tabs.query({});
+    await Promise.all(tabs.map((tab) => maybeInjectPersistentUi(tab.id, tab.url)));
+  })();
 });
 
 async function toggleFloatingUi(tab) {
@@ -173,6 +199,55 @@ async function quickDownloadImage(url) {
       error: error.message || "Could not start the download."
     };
   }
+}
+
+async function maybeInjectPersistentUi(tabId, url) {
+  if (!tabId || !url || isRestrictedUrl(url)) {
+    return;
+  }
+
+  const enabled = await getPersistentModeEnabled();
+  if (!enabled) {
+    return;
+  }
+
+  try {
+    await ensureContentScript(tabId);
+  } catch (_error) {
+    // Ignore tabs that reject script execution.
+  }
+}
+
+async function getPersistentModeEnabled() {
+  if (persistentModeLoaded) {
+    return persistentModeEnabled;
+  }
+
+  return refreshPersistentModeCache();
+}
+
+async function refreshPersistentModeCache() {
+  try {
+    const result = await api.storage.local.get(["iepSettingsManager", "iepFilters"]);
+    persistentModeEnabled = resolvePersistentMode(result);
+  } catch (_error) {
+    persistentModeEnabled = true;
+  }
+
+  persistentModeLoaded = true;
+  return persistentModeEnabled;
+}
+
+function resolvePersistentMode(storageState) {
+  const manager = storageState?.iepSettingsManager;
+  const profiles = Array.isArray(manager?.profiles) ? manager.profiles : [];
+  const activeId = manager?.activeId || "default";
+  const activeProfile = profiles.find((profile) => profile?.id === activeId) || profiles[0];
+  const filters = activeProfile?.filters && typeof activeProfile.filters === "object"
+    ? activeProfile.filters
+    : (storageState?.iepFilters && typeof storageState.iepFilters === "object" ? storageState.iepFilters : {});
+
+  return typeof filters?.persistentMode === "boolean" ? filters.persistentMode : true;
 }
 
 async function saveExtractionSession(sessionData) {
