@@ -1785,7 +1785,7 @@
           .iep-preview-count { font-size: 15px; font-weight: 700; color: var(--iep-text-main); }
           .iep-preview-meta { color: var(--iep-text-soft); font-size: 12px; }
           .iep-actions { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 10px; }
-          .iep-actions > .iep-button { flex: 1 1 0; min-width: 0; white-space: nowrap; text-align: center; }
+          .iep-actions > .iep-button { flex: 1 1 0; min-width: 0; white-space: normal; text-align: center; }
           .iep-status { border-radius: 16px; border: 1px solid var(--iep-border); background: var(--iep-surface-soft); padding: 12px 14px; }
           .iep-status[data-tone="success"] { background: var(--iep-success-bg); border-color: var(--iep-success-border); color: var(--iep-success-text); }
           .iep-status[data-tone="error"] { background: var(--iep-error-bg); border-color: var(--iep-error-border); color: var(--iep-error-text); }

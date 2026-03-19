@@ -165,6 +165,43 @@ const state = {
   pendingDelete: null,
   currentPage: 1
 };
+
+const imageCacheManager = {
+  cacheName: "iep-gallery-cache",
+  blobUrls: new Map(),
+
+  async get(url) {
+    if (!url || !("caches" in window) || url.startsWith("blob:") || url.startsWith("data:")) return url;
+    if (this.blobUrls.has(url)) return this.blobUrls.get(url);
+
+    try {
+      const cache = await caches.open(this.cacheName);
+      let response = await cache.match(url);
+
+      if (!response) {
+        response = await fetch(url, { credentials: "omit" }).catch(() => null);
+        if (response && response.ok) {
+          await cache.put(url, response.clone());
+        } else {
+          return url;
+        }
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      this.blobUrls.set(url, blobUrl);
+      return blobUrl;
+    } catch (_error) {
+      return url;
+    }
+  },
+
+  preload(url) {
+    if (!url || this.blobUrls.has(url)) return;
+    this.get(url).catch(() => {});
+  }
+};
+
 window.flickrNetworkCache = window.flickrNetworkCache || [];
 window.flickrApiKey = window.flickrApiKey || "";
 
@@ -478,6 +515,7 @@ async function initialize() {
     state.images = Array.isArray(response.session.images)
       ? response.session.images.map((image, index) => ({
           ...image,
+          thumbUrl: image.thumbUrl || image.url,
           selected: false,
           isDuplicate: false,
           duplicateReason: "",
@@ -798,7 +836,21 @@ function renderGrid(matchingImages) {
       previewImage.style.display = "none";
       mediaFallback.style.display = "flex";
     }, { once: true });
-    previewImage.src = image.url;
+    const thumbSrc = image.thumbUrl || image.url;
+
+    if (typeof imageCacheManager !== "undefined" && imageCacheManager.blobUrls.has(thumbSrc)) {
+      previewImage.src = imageCacheManager.blobUrls.get(thumbSrc);
+    } else {
+      previewImage.src = thumbSrc;
+
+      if (typeof imageCacheManager !== "undefined") {
+        imageCacheManager.get(thumbSrc).then((blobUrl) => {
+          if (previewImage.src !== blobUrl && document.body.contains(previewImage)) {
+            previewImage.src = blobUrl;
+          }
+        }).catch(() => {});
+      }
+    }
 
     formatPill.textContent = getFormatLabel(image);
     sourcePill.textContent = prettifySourceType(image.sourceType);
@@ -1367,10 +1419,17 @@ function stripDuplicateExtension(pathname) {
 }
 
 async function getImageDHash(image, hashCache) {
-  const cacheKey = image.url || image.clientId;
+  const cacheKey = image.clientId;
 
   if (!hashCache.has(cacheKey)) {
-    hashCache.set(cacheKey, createImageDHash(image.url));
+    const targetUrl = image.thumbUrl || image.url;
+    let fetchUrl = targetUrl;
+
+    if (typeof imageCacheManager !== "undefined") {
+      fetchUrl = await imageCacheManager.get(targetUrl);
+    }
+
+    hashCache.set(cacheKey, createImageDHash(fetchUrl));
   }
 
   return hashCache.get(cacheKey);
@@ -2127,7 +2186,6 @@ async function processFlickrQueue(imageCards, isRetry = false) {
             item.card.dataset.width = String(maxData.width);
             item.card.dataset.height = String(maxData.height);
           }
-          item.imgEl.src = nextUrl;
           if (item.linkEl) {
             item.linkEl.href = nextUrl;
             item.linkEl.textContent = trimUrlForDisplay(nextUrl);
@@ -2775,23 +2833,31 @@ function renderLightboxImage() {
     return;
   }
   const initialUrl = lbImages[currentLbIndex].url;
+  const thumbUrl = lbImages[currentLbIndex].thumb;
   const activeIndex = currentLbIndex;
-  mainImage.src = initialUrl;
+
+  // 1. Instantly show thumbnail (or cached 4K) so the user never sees a blank screen
+  if (imageCacheManager.blobUrls.has(initialUrl)) {
+    mainImage.src = imageCacheManager.blobUrls.get(initialUrl);
+  } else {
+    mainImage.src = thumbUrl;
+  }
   if (downloadButtonElement) {
     downloadButtonElement.onclick = () => {
       api.downloads.download({ url: initialUrl, saveAs: true }).catch(() => {});
     };
   }
 
+  // 2. Fetch max URL, Cache it, then swap it in seamlessly
   window.getTrueFlickrMax(initialUrl).then((maxData) => {
     const maxUrl = maxData?.url || initialUrl;
-    if (currentLbIndex !== activeIndex || lbImages[currentLbIndex]?.url !== initialUrl) {
-      return;
-    }
+    if (currentLbIndex !== activeIndex) return;
 
-    if (mainImage.src !== maxUrl) {
-      mainImage.src = maxUrl;
-    }
+    imageCacheManager.get(maxUrl).then((blobUrl) => {
+      if (currentLbIndex === activeIndex && mainImage.src !== blobUrl) {
+        mainImage.src = blobUrl;
+      }
+    });
 
     if (downloadButtonElement) {
       downloadButtonElement.onclick = () => {
@@ -2805,6 +2871,12 @@ function renderLightboxImage() {
       };
     }
   });
+
+  // 3. Invisibly preload the 4K versions of the NEXT and PREVIOUS images
+  const nextIndex = (currentLbIndex + 1) % lbImages.length;
+  const prevIndex = (currentLbIndex - 1 + lbImages.length) % lbImages.length;
+  window.getTrueFlickrMax(lbImages[nextIndex]?.url).then((data) => imageCacheManager.preload(data?.url || lbImages[nextIndex]?.url));
+  window.getTrueFlickrMax(lbImages[prevIndex]?.url).then((data) => imageCacheManager.preload(data?.url || lbImages[prevIndex]?.url));
 
   document.querySelectorAll(".lb-thumb").forEach((thumbnail, index) => {
     thumbnail.classList.toggle("active", index === currentLbIndex);
