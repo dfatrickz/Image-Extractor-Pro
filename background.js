@@ -4,6 +4,7 @@ const EXTRACTION_KEY_PREFIX = "iepExtraction:";
 const EXTRACTION_INDEX_KEY = "iepExtractionIndex";
 const MAX_STORED_SESSIONS = 5;
 const CONTEXT_MENU_ID = "iep-extract-image";
+const incognitoSessions = new Map();
 let persistentModeEnabled = true;
 let persistentModeLoaded = false;
 
@@ -48,6 +49,24 @@ api.runtime.onMessage.addListener((message, sender) => {
       return fetchBinaryProbe(message.url);
     case "IEP_QUICK_DOWNLOAD":
       return quickDownloadImage(message.url);
+    case "IEP_OPEN_GUIDE":
+      {
+        const anchor = message.anchor || "";
+        const anchorUrl = anchor ? `guide.html#${anchor}` : "guide.html";
+        const fullUrl = api.runtime.getURL(anchorUrl);
+        const baseUrl = api.runtime.getURL("guide.html");
+
+        api.tabs.query({ url: baseUrl + "*" }).then((tabs) => {
+          if (tabs.length > 0) {
+            api.tabs.update(tabs[0].id, { active: true });
+            api.windows.update(tabs[0].windowId, { focused: true });
+            api.tabs.sendMessage(tabs[0].id, { type: "IEP_SCROLL_TO", anchor: anchor }).catch(() => {});
+          } else {
+            api.tabs.create({ url: fullUrl });
+          }
+        });
+        return { ok: true };
+      }
     default:
       return undefined;
   }
@@ -122,10 +141,10 @@ async function openGalleryFromContent(tab, message) {
       flickrApiKey: message.flickrApiKey || "",
       extractedAt: new Date().toISOString(),
       images
-    });
+    }, tab?.incognito);
 
     const galleryUrl = api.runtime.getURL(`gallery.html?session=${encodeURIComponent(sessionId)}`);
-    await api.tabs.create({ url: galleryUrl });
+    await api.tabs.create({ url: galleryUrl, windowId: tab?.windowId });
 
     return {
       ok: true,
@@ -250,8 +269,15 @@ function resolvePersistentMode(storageState) {
   return typeof filters?.persistentMode === "boolean" ? filters.persistentMode : true;
 }
 
-async function saveExtractionSession(sessionData) {
+async function saveExtractionSession(sessionData, isIncognito = false) {
   const sessionId = createSessionId();
+  if (isIncognito) {
+    incognitoSessions.set(sessionId, { sessionId, ...sessionData });
+    if (incognitoSessions.size > MAX_STORED_SESSIONS) {
+      incognitoSessions.delete(incognitoSessions.keys().next().value);
+    }
+    return sessionId;
+  }
   const sessionKey = getSessionKey(sessionId);
   const storageState = await api.storage.local.get(EXTRACTION_INDEX_KEY);
   const existingIds = Array.isArray(storageState[EXTRACTION_INDEX_KEY])
@@ -288,6 +314,10 @@ async function getExtractionSession(sessionId) {
 
     if (!targetSessionId) {
       throw new Error("No extraction session is available yet.");
+    }
+
+    if (incognitoSessions.has(targetSessionId)) {
+      return { ok: true, session: incognitoSessions.get(targetSessionId) };
     }
 
     const storageState = await api.storage.local.get(getSessionKey(targetSessionId));

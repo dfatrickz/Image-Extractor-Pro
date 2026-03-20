@@ -201,7 +201,7 @@
         windowScale: "big",
         themeStyle: "rich",
         galleryPagination: "unlimited",
-        disablePageScrolling: false,
+        lazyLoadBypass: true,
         autoCheckDuplicates: false,
         stickyToolbar: true,
         hideDeleteWarning: false,
@@ -469,7 +469,9 @@
         windowScaleSelect: this.shadowRoot.getElementById("iepWindowScale"),
         themeStyleSelect: this.shadowRoot.getElementById("iepThemeStyle"),
         galleryPaginationSelect: this.shadowRoot.getElementById("iepGalleryPagination"),
-        disablePageScrollingToggle: this.shadowRoot.getElementById("iepDisablePageScrolling"),
+        quickLazyLoadToggle: this.shadowRoot.getElementById("iepQuickLazyLoad"),
+        quickSiteControlsToggle: this.shadowRoot.getElementById("iepQuickSiteControls"),
+        lazyLoadBypassToggle: this.shadowRoot.getElementById("iepLazyLoadBypass"),
         autoCheckDuplicatesToggle: this.shadowRoot.getElementById("iepAutoCheckDuplicates"),
         stickyToolbarToggle: this.shadowRoot.getElementById("iepStickyToolbar"),
         disableSiteControlsToggle: this.shadowRoot.getElementById("iepDisableSiteControls"),
@@ -663,7 +665,17 @@
         this.updateFiltersFromInputs();
       });
 
-      this.elements.disablePageScrollingToggle.addEventListener("change", () => {
+      this.elements.quickLazyLoadToggle?.addEventListener("change", (event) => {
+        if (this.elements.lazyLoadBypassToggle) this.elements.lazyLoadBypassToggle.checked = event.target.checked;
+        this.updateFiltersFromInputs();
+      });
+
+      this.elements.quickSiteControlsToggle?.addEventListener("change", (event) => {
+        if (this.elements.disableSiteControlsToggle) this.elements.disableSiteControlsToggle.checked = event.target.checked;
+        this.updateFiltersFromInputs();
+      });
+
+      this.elements.lazyLoadBypassToggle.addEventListener("change", () => {
         this.updateFiltersFromInputs();
       });
 
@@ -689,6 +701,14 @@
 
       this.elements.startMinimizedToggle.addEventListener("change", () => {
         this.updateFiltersFromInputs();
+      });
+
+      this.shadowRoot.querySelectorAll(".iep-help-btn").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          api.runtime.sendMessage({ type: "IEP_OPEN_GUIDE", anchor: button.dataset.anchor });
+        });
       });
 
       this.elements.rateLimitInput.addEventListener("input", () => {
@@ -838,7 +858,9 @@
       this.elements.windowScaleSelect.value = this.state.filters.windowScale;
       this.elements.themeStyleSelect.value = this.state.filters.themeStyle;
       this.elements.galleryPaginationSelect.value = this.state.filters.galleryPagination;
-      this.elements.disablePageScrollingToggle.checked = Boolean(this.state.filters.disablePageScrolling);
+      if (this.elements.quickLazyLoadToggle) this.elements.quickLazyLoadToggle.checked = Boolean(this.state.filters.lazyLoadBypass);
+      if (this.elements.quickSiteControlsToggle) this.elements.quickSiteControlsToggle.checked = Boolean(this.state.filters.disableSiteControls);
+      this.elements.lazyLoadBypassToggle.checked = Boolean(this.state.filters.lazyLoadBypass);
       this.elements.autoCheckDuplicatesToggle.checked = Boolean(this.state.filters.autoCheckDuplicates);
       this.elements.stickyToolbarToggle.checked = Boolean(this.state.filters.stickyToolbar);
       this.elements.disableSiteControlsToggle.checked = Boolean(this.state.filters.disableSiteControls);
@@ -872,7 +894,9 @@
       this.elements.windowScaleSelect.disabled = this.state.busy;
       this.elements.themeStyleSelect.disabled = this.state.busy;
       this.elements.galleryPaginationSelect.disabled = this.state.busy;
-      this.elements.disablePageScrollingToggle.disabled = this.state.busy;
+      if (this.elements.quickLazyLoadToggle) this.elements.quickLazyLoadToggle.disabled = this.state.busy;
+      if (this.elements.quickSiteControlsToggle) this.elements.quickSiteControlsToggle.disabled = this.state.busy;
+      this.elements.lazyLoadBypassToggle.disabled = this.state.busy;
       this.elements.autoCheckDuplicatesToggle.disabled = this.state.busy;
       this.elements.stickyToolbarToggle.disabled = this.state.busy;
       this.elements.disableSiteControlsToggle.disabled = this.state.busy;
@@ -1009,7 +1033,7 @@
       this.state.filters.themeStyle = this.elements.themeStyleSelect.value || "standard";
       this.state.filters.galleryPagination = this.elements.galleryPaginationSelect.value || "unlimited";
       this.state.filters.downloadMode = this.elements.downloadModeRadios.find((radio) => radio.checked)?.value || "zip";
-      this.state.filters.disablePageScrolling = Boolean(this.elements.disablePageScrollingToggle.checked);
+      this.state.filters.lazyLoadBypass = Boolean(this.elements.lazyLoadBypassToggle.checked);
       this.state.filters.autoCheckDuplicates = Boolean(this.elements.autoCheckDuplicatesToggle.checked);
       this.state.filters.stickyToolbar = Boolean(this.elements.stickyToolbarToggle.checked);
       this.state.filters.disableSiteControls = Boolean(this.elements.disableSiteControlsToggle.checked);
@@ -1748,7 +1772,7 @@
           .iep-window-actions { display: flex; gap: 8px; }
           .iep-icon-button { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--iep-border); background: var(--iep-icon-bg); color: var(--iep-text-soft); cursor: pointer; font-size: 15px; line-height: 1; }
           .iep-icon-active { color: var(--iep-accent); border-color: var(--iep-accent); background: var(--iep-icon-active-bg); }
-          .iep-body { display: grid; gap: 14px; padding: 18px; overflow: auto; }
+          .iep-body { display: flex; flex-direction: column; gap: 14px; padding: 18px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
           .iep-card, .iep-details { background: var(--iep-surface); border: 1px solid var(--iep-border); border-radius: 18px; box-shadow: var(--iep-shadow-soft); }
           .iep-card { padding: 14px; display: grid; gap: 14px; }
           .iep-card h2, .iep-details summary { margin: 0; font-size: 14px; font-weight: 700; }
@@ -1781,6 +1805,8 @@
           .iep-details[open] summary::after { content: "-"; }
           .iep-details-body { display: grid; gap: 12px; padding: 0 14px 14px; border-top: 1px solid var(--iep-border); }
           .iep-toggle-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--iep-text-muted); }
+          .iep-help-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--iep-border-strong); color: var(--iep-text-main); font-size: 11px; font-weight: bold; border: none; cursor: pointer; margin-left: 6px; padding: 0; transition: background 0.2s; }
+          .iep-help-btn:hover { background: var(--iep-accent); color: white; }
           .iep-selection-label { font-weight: 600; color: var(--iep-text-main); word-break: break-word; }
           .iep-preview-count { font-size: 15px; font-weight: 700; color: var(--iep-text-main); }
           .iep-preview-meta { color: var(--iep-text-soft); font-size: 12px; }
@@ -1822,6 +1848,7 @@
             <header class="iep-panel-header"><div><p class="iep-kicker">Image Extractor Pro</p><h1 class="iep-title">Scoped Image Extraction</h1><p class="iep-subtitle">Review images before opening the full gallery.</p></div><div class="iep-header-controls"><div class="iep-window-actions"><button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false">&#9881;</button><button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button><button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button></div></div></header>
             <div class="iep-body">
               <section class="iep-card"><div class="iep-action-grid"><button id="iepExtractAllButton" class="iep-button iep-button-primary" type="button">Extract All from Page</button><button id="iepSelectAreaButton" class="iep-button iep-button-secondary" type="button">Select Area to Extract</button></div><div id="iepPreviewContainer" class="iep-preview-container"><div class="iep-preview-inner"><div class="iep-preview-stack"><div id="iepScanProgressWrapper" style="display: none; padding: 12px; background: var(--iep-bg-secondary, #1e293b); border-radius: 6px; margin-bottom: 10px;"><div style="width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden;"><div id="iepScanProgressBar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.1s ease-out;"></div></div><div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #94a3b8;"><span id="iepScanStatusText">Initializing scan...</span><span id="iepScanPercentText">0%</span></div></div><p id="iepSelectionLabel" class="iep-selection-label">No extraction scope selected yet.</p><p id="iepPreviewCount" class="iep-preview-count">Found 0 images matching your filters.</p><p id="iepPreviewMeta" class="iep-preview-meta">Use one of the extract actions above to preview the result count first.</p><section id="iepStatus" class="iep-status" data-tone="default" aria-live="polite"><p id="iepStatusMessage">Run a page extract or select an area, then review the match count before opening the gallery.</p></section><div class="iep-actions"><button id="iepCancelButton" class="iep-button iep-button-secondary" type="button" hidden>Clear Preview</button><button id="iepReviewButton" class="iep-button iep-button-primary" type="button" hidden>Review &amp; Download</button></div></div></div></div></section>
+              <section class="iep-card"><h2>Quick Settings</h2><div style="display: grid; gap: 10px;"><label class="iep-toggle-row"><input id="iepQuickLazyLoad" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)</span><button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></label><label class="iep-toggle-row"><input id="iepQuickSiteControls" type="checkbox"><span>Disable website image controls</span><button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></label></div></section>
               <section class="iep-card"><h2>Filters</h2><p>Image search filters for size &amp; formats</p><div class="iep-filter-grid"><label class="iep-field"><span>Minimum Width (px)</span><input id="iepMinWidth" type="number" min="0" step="10" value="150"></label><label class="iep-field"><span>Minimum Height (px)</span><input id="iepMinHeight" type="number" min="0" step="10" value="150"></label></div><div id="iepFormatOptions" class="iep-format-grid" aria-label="Format filters"></div><div class="iep-inline-group"><span class="iep-field-label">Extra supported formats</span><div id="iepAdvancedFormatOptions" class="iep-format-grid iep-format-grid-compact" aria-label="Advanced format filters"></div></div></section>
               <details class="iep-details"><summary>Advanced Settings</summary><div class="iep-details-body"><label class="iep-field iep-field-full"><span>Ignore selectors or class fragments</span><input id="iepIgnoredSelectors" type="text" placeholder=".avatar, .logo, sponsor-card"></label><label class="iep-toggle-row"><input id="iepPreferLinkedOriginals" type="checkbox" checked><span>Prefer linked original image URLs when available</span></label></div></details>
             </div>
@@ -1847,24 +1874,24 @@
                   <p>Choose how the gallery should package and label the selected images.</p>
                   <div class="iep-settings-stack">
                     <div class="iep-inline-group">
-                      <span class="iep-field-label">Default Download Mode</span>
+                      <span class="iep-field-label">Default Download Mode<button class="iep-help-btn" data-anchor="download-mode" title="Choose ZIP or Individual file downloads.">&#63;</button></span>
                       <div class="iep-radio-group">
                         <label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="individual"><span>Individual Files</span></label>
                         <label class="iep-radio-option"><input type="radio" name="iepDownloadMode" value="zip" checked><span>ZIP Archive</span></label>
                       </div>
                     </div>
                     <label class="iep-field">
-                      <span>Subfolder Name</span>
+                      <span>Subfolder Name<button class="iep-help-btn" data-anchor="subfolder-name" title="Creates a specific folder for your downloads.">&#63;</button></span>
                       <input id="iepSubfolderName" type="text" placeholder="enter folder name (optional)">
                       <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Overrides automatic naming. All images will save to this single folder/ZIP.</div>
                     </label>
-                    <label class="iep-dark-label" style="display: block; margin-top: 10px; font-size: 13px;">File Naming Scheme</label>
+                    <label class="iep-dark-label" style="display: block; margin-top: 10px; font-size: 13px;">File Naming Scheme<button class="iep-help-btn" data-anchor="naming-scheme" title="Keep original names or use numbered sequences.">&#63;</button></label>
                     <select id="iep-naming-scheme" style="background: var(--bg-secondary); color: white; border: 1px solid #334155; border-radius: 4px; padding: 4px; width: 100%; margin-top: 4px;">
                       <option value="original">Original Name (Default)</option>
                       <option value="sequential">Sequential (1, 2, 3...)</option>
                     </select>
                     <label class="iep-field">
-                      <span>Image Origin</span>
+                      <span>Image Origin <button class="iep-help-btn" type="button" data-anchor="image-origin" title="Choose whether downloads prefer the source URL, rendered image, or both.">&#63;</button></span>
                       <select id="iepImageOrigin" class="iep-select">
                         <option value="all">All</option>
                         <option value="rendered">Rendered</option>
@@ -1877,24 +1904,24 @@
                   <h3>Safety &amp; Behavior</h3>
                   <p>Controls for global injection, Fast Grab behavior, and duplicate analysis defaults.</p>
                   <div class="iep-settings-stack">
-                    <label class="iep-toggle-row"><input id="iepPersistentMode" type="checkbox"><span>Enable persistent floating icon on all websites</span></label>
-                    <label class="iep-toggle-row"><input id="iepDisablePageScrolling" type="checkbox"><span>Disable Page Scrolling (Lazy Load Bypass)</span></label>
-                    <label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span></label>
-                    <label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab</span></label>
-                    <label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span></label>
-                    <label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox" checked><span>Start Minimized</span></label>
-                    <label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking</span></label>
-                    <label class="iep-field"><span>Rate Limit / Delay per image (ms)</span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label>
-                    <label class="iep-field"><span>Individual Download Warning Threshold</span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label>
+                    <label class="iep-toggle-row"><input id="iepPersistentMode" type="checkbox"><span>Enable persistent floating icon on all websites</span><button class="iep-help-btn" data-anchor="persistent-mode" title="Injects the extension automatically on all pages.">&#63;</button></label>
+                    <label class="iep-toggle-row"><input id="iepLazyLoadBypass" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)</span><button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></label>
+                    <label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span><button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></label>
+                    <label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab</span><button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Downloads the image under your cursor instantly without opening the full gallery.">&#63;</button></label>
+                    <label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span><button class="iep-help-btn" data-anchor="show-fab" title="Show or hide the floating launch button.">&#63;</button></label>
+                    <label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox" checked><span>Start Minimized</span><button class="iep-help-btn" data-anchor="start-minimized" title="Start as a small button instead of a full panel.">&#63;</button></label>
+                    <label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking</span><button class="iep-help-btn" data-anchor="auto-dupe" title="Automatically scan and hide visual duplicates.">&#63;</button></label>
+                    <label class="iep-field"><span>Rate Limit / Delay per image (ms) <button class="iep-help-btn" type="button" data-anchor="rate-limit" title="Adds a delay between downloads to reduce site throttling or browser pressure.">&#63;</button></span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label>
+                    <label class="iep-field"><span>Individual Download Warning Threshold<button class="iep-help-btn" data-anchor="warning-threshold" title="Warns before downloading too many single files.">&#63;</button></span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label>
                   </div>
                 </section>
                 <section class="iep-settings-panel">
                   <h3>Appearance</h3>
                   <p>Control the launcher size and how the gallery presents large result sets.</p>
                   <div class="iep-settings-stack">
-                    <label class="iep-toggle-row"><input id="iepStickyToolbar" type="checkbox" checked><span>Sticky Toolbar</span></label>
+                    <label class="iep-toggle-row"><input id="iepStickyToolbar" type="checkbox" checked><span>Sticky Toolbar</span><button class="iep-help-btn" type="button" data-anchor="sticky-toolbar" title="Keeps the gallery controls pinned to the top while you scroll.">&#63;</button></label>
                     <label class="iep-field">
-                      <span>Window Size</span>
+                      <span>Window Size<button class="iep-help-btn" data-anchor="window-size" title="Change the size of the floating panel.">&#63;</button></span>
                       <select id="iepWindowScale" class="iep-select">
                         <option value="small">Small</option>
                         <option value="medium">Medium</option>
@@ -1902,7 +1929,7 @@
                       </select>
                     </label>
                     <label class="iep-field">
-                      <span>Theme</span>
+                      <span>Theme<button class="iep-help-btn" data-anchor="theme" title="Light, Dark, or System mode.">&#63;</button></span>
                       <select id="iepTheme" class="iep-select">
                         <option value="system">System (Default)</option>
                         <option value="dark">Dark</option>
@@ -1910,7 +1937,7 @@
                       </select>
                     </label>
                     <label class="iep-field">
-                      <span>Theme Style</span>
+                      <span>Theme Style<button class="iep-help-btn" data-anchor="theme-style" title="Adjust the visual flair of the gallery.">&#63;</button></span>
                       <select id="iepThemeStyle" class="iep-select">
                         <option value="minimal">Minimal</option>
                         <option value="standard">Standard</option>
@@ -1918,7 +1945,7 @@
                       </select>
                     </label>
                     <label class="iep-field">
-                      <span>Images per page</span>
+                      <span>Images per page<button class="iep-help-btn" data-anchor="images-per-page" title="Paginate the gallery for better performance.">&#63;</button></span>
                       <select id="iepGalleryPagination" class="iep-select">
                         <option value="50">50</option>
                         <option value="100">100</option>
@@ -1942,11 +1969,11 @@
 
     try {
       onProgress?.("Scrolling and waking up lazy-loaded images...", "info");
-      if (filters?.disablePageScrolling) {
+      if (filters?.lazyLoadBypass) {
+        await warmUpLazyContent(root);
+      } else {
         hydrateLazyMedia(root);
         await waitForScopedImages(root, 650);
-      } else {
-        await warmUpLazyContent(root);
       }
       onProgress?.("Parsing DOM for image sources...", "info");
       onScanProgress?.(0, "Parsing DOM...");
@@ -3753,18 +3780,24 @@ async function registerCandidates(imageMap, candidates, context) {
 
   async function handleContextQuickDownload() {
     const target = getImageFromPoint(lastRightClickX, lastRightClickY);
-    const url = await getBestImageUrl(target);
+    const baseurl = await getBestImageUrl(target);
 
-    if (!url) {
+    if (!baseurl) {
       return {
         ok: false,
         error: "No image was found at the last right-click location."
       };
     }
 
+    let finalUrl = baseurl;
+    if (typeof window.getTrueFlickrMax === "function") {
+      const maxData = await window.getTrueFlickrMax(baseurl);
+      finalUrl = maxData?.url || baseurl;
+    }
+
     return api.runtime.sendMessage({
       type: "IEP_QUICK_DOWNLOAD",
-      url
+      url: finalUrl
     });
   }
 })();

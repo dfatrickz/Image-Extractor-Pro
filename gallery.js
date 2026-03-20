@@ -171,8 +171,23 @@ const imageCacheManager = {
   blobUrls: new Map(),
 
   async get(url) {
-    if (!url || !("caches" in window) || url.startsWith("blob:") || url.startsWith("data:")) return url;
+    if (!url || url.startsWith("blob:") || url.startsWith("data:")) return url;
     if (this.blobUrls.has(url)) return this.blobUrls.get(url);
+    if (api.extension.inIncognitoContext) {
+      try {
+        const response = await fetch(url, { credentials: "omit" }).catch(() => null);
+        if (response && response.ok) {
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          this.blobUrls.set(url, blobUrl);
+          return blobUrl;
+        }
+        return url;
+      } catch (_error) {
+        return url;
+      }
+    }
+    if (!("caches" in window)) return url;
 
     try {
       const cache = await caches.open(this.cacheName);
@@ -226,7 +241,7 @@ window.getTrueFlickrMax = async function(thumbUrl) {
   }
 
   async function writeCacheStore(value) {
-    if (!storageLocal) {
+    if (!storageLocal || api.extension.inIncognitoContext) {
       return;
     }
     if (useCallbackStorage) {
