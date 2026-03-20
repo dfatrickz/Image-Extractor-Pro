@@ -358,7 +358,7 @@ window.getTrueFlickrMax = async function(thumbUrl) {
 
     console.log(`[IEP Debug] ⏳ [ID: ${photoId}] Firing request...`);
     const res = await fetch(pageUrl, {
-      credentials: "include",
+      credentials: "omit",
       signal: controller.signal
     });
 
@@ -1419,13 +1419,13 @@ function getNormalizedDuplicateUrlKey(url) {
   }
 
   try {
-    const parsedUrl = new URL(url);
+    const parsedUrl = new URL(url.replace(/^http:/i, "https:"));
     parsedUrl.search = "";
     parsedUrl.hash = "";
     parsedUrl.pathname = stripDuplicateExtension(parsedUrl.pathname);
     return parsedUrl.href;
   } catch (error) {
-    return stripDuplicateExtension(String(url).split(/[?#]/, 1)[0]);
+    return stripDuplicateExtension(String(url).replace(/^http:/i, "https:").split(/[?#]/, 1)[0]);
   }
 }
 
@@ -1764,7 +1764,7 @@ async function prepareConvertedDownload(image, outputFormat, quality) {
 
 async function fetchImageBlob(url) {
   const response = await fetch(url, {
-    credentials: "include"
+    credentials: "omit"
   });
 
   if (!response.ok) {
@@ -2264,7 +2264,7 @@ async function processFlickrQueue(imageCards, isRetry = false) {
 
 async function loadGallerySettings() {
   const defaults = {
-    persistentMode: true,
+    persistentMode: false,
     autoCheckDuplicates: false,
     hideDeleteWarning: false,
     downloadMode: "zip",

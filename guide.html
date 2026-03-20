@@ -33,9 +33,10 @@
       max-width: 800px;
       margin: 0 auto;
       padding: 40px 20px;
+	  text-align: center;
     }
-    h1 { color: var(--accent); font-size: 2.5em; margin-bottom: 10px; }
-    h2 { border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 40px; }
+    h1 { color: var(--accent); font-size: 2.5em; margin-bottom: 10px; text-align: center; }
+    h2 { border-bottom: 2px solid var(--border); padding-bottom: 8px; margin-top: 40px; text-align: center; }
     .setting-block {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -43,21 +44,28 @@
       padding: 20px;
       margin-bottom: 16px;
       transition: background-color 0.5s ease;
+	  text-align: center;
     }
-    .setting-block h3 { margin-top: 0; display: flex; align-items: center; gap: 8px; }
-    .setting-block p { color: var(--text-soft); margin-bottom: 0; }
+    .setting-block h3 { margin-top: 0; display: grid; align-items: center; gap: 8px; text-align: center; }
+	.setting-block h4 { color: #60a5fa; margin-top: 0; display: grid; align-items: center; gap: 8px; text-align: center; }
+    .setting-block p { color: var(--text-soft); margin-bottom: 0; text-align: center; }
   </style>
 </head>
 <body>
 
   <h1>Image Extractor Pro Guide</h1>
-  <p>Welcome! This guide explains all the features and settings available in the extension.</p>
+  <h3>Welcome!</h3>
+  <p>This guide explains all the features and settings available in the extension.</p>
 
   <h2>Download Preferences</h2>
 
   <div id="download-mode" class="setting-block">
     <h3>Default Download Mode</h3>
-    <p><strong>What it does:</strong> Sets whether you want to download a single compressed ZIP file containing all images, or download each image individually.<br><br><strong>When to use it:</strong> ZIP is usually faster, cleaner, and recommended. Individual files are good if you are only downloading 2 or 3 images.</p>
+	<h4><strong>What it does</strong></h4>
+    <p> Sets whether you want to download a single compressed ZIP file containing all images, or download each image individually.
+	<br><br>
+	<h4><strong>When to use it</strong></h4> 
+	<p>ZIP is usually faster, cleaner, and recommended. Individual files are good if you are only downloading 2 or 3 images.</p>
   </div>
 
   <div id="subfolder-name" class="setting-block">
@@ -84,13 +92,14 @@
 
   <div id="site-controls" class="setting-block">
     <h3>Disable website image controls</h3>
-    <p><strong>What it does:</strong> Sites like Instagram or Flickr often place invisible "shields" over their photos or hijack your mouse to stop you from right-clicking or saving them.<br><br><strong>When to use it:</strong> Keep this enabled. It forcefully restores your browser's native Right-Click menu and removes invisible overlays so you can use the Fast Grab feature.</p>
+    <p><strong>What it does:</strong> Sites like Instagram or Flickr often place invisible "shields" over their photos or hijack your mouse to stop you from right-clicking or saving them.<br><br><strong>When to use it:</strong> When enabled, it forcefully restores your browser's native Right-Click menu and removes invisible overlays so you can use the Fast Grab feature.</p>
   </div>
 
-  <div id="fast-grab" class="setting-block">
+ <div id="fast-grab" class="setting-block">
     <h3>Enable Fast Grab</h3>
-    <p><strong>What it does:</strong> Whenever you hover your mouse over an image on any website, a small blue download button will appear in the corner of that picture. Clicking it will instantly find the highest resolution version and download it to your computer.<br><br><strong>When to use it:</strong> Highly recommended for quick, single-image downloads without needing to open the full review gallery.</p>
+    <p><strong>What it does:</strong> Whenever you hover your mouse over an image on any website, a small blue download button will appear in the corner of that picture. Clicking it will instantly find the highest resolution version and download it to your computer.<br><br><strong>When to use it:</strong> Useful for quick, single-image downloads without needing to open the full review gallery.</p>
   </div>
+
 
   <div id="persistent-mode" class="setting-block">
     <h3>Persistent Floating Icon</h3>
@@ -109,8 +118,9 @@
 
   <div id="auto-dupe" class="setting-block">
     <h3>Enable automatic duplicate checking</h3>
-    <p><strong>What it does:</strong> Uses an advanced visual scanner to find and hide exact duplicate images before you even open the review gallery.<br><br><strong>When to use it:</strong> Highly recommended for messy websites like Pinterest, Tumblr, or blogs that repeat the same thumbnail multiple times.</p>
+    <p><strong>What it does:</strong> Uses an advanced visual scanner to find and hide exact duplicate images before you even open the review gallery.<br><br><strong>When to use it:</strong> Helpful for messy websites like Pinterest, Tumblr, or blogs that repeat the same thumbnail multiple times.</p>
   </div>
+
 
   <div id="rate-limit" class="setting-block">
     <h3>Rate Limit / Delay per image (ms)</h3>
@@ -125,9 +135,9 @@
 
   <h2>Appearance</h2>
 
-<div id="sticky-toolbar" class="setting-block">
+  <div id="sticky-toolbar" class="setting-block">
     <h3>Sticky Toolbar</h3>
-    <p><strong>What it does:</strong> Keeps the gallery's top menu (with the Download and Select All buttons) permanently pinned to the top of your screen while you scroll down through your extracted images.<br><br><strong>When to use it:</strong> Highly recommended to keep this enabled so you don't have to scroll all the way back to the top to download your selections.</p>
+    <p><strong>What it does:</strong> Keeps the gallery's top menu (with the Download and Select All buttons) permanently pinned to the top of your screen while you scroll down through your extracted images.<br><br><strong>When to use it:</strong> Enable this if you prefer not to scroll all the way back to the top to download your selections.</p>
   </div>
 
   <div id="window-size" class="setting-block">

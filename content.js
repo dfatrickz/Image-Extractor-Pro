@@ -95,24 +95,6 @@
   let lastMouseX = 0;
   let lastMouseY = 0;
 
-  window.iepFlickrData = window.iepFlickrData || {};
-  window.iepFlickrNetworkCache = window.iepFlickrNetworkCache || [];
-  window.flickrNetworkCache = window.iepFlickrNetworkCache;
-
-  window.addEventListener("message", (event) => {
-    if (event.data && event.data.type === "IEP_FLICKR_DATA_CACHED") {
-      const payloadText = String(event.data.payload || "");
-      if (payloadText) {
-        window.iepFlickrNetworkCache.push(payloadText);
-        if (window.iepFlickrNetworkCache.length > 20) {
-          window.iepFlickrNetworkCache.splice(0, window.iepFlickrNetworkCache.length - 20);
-        }
-        window.flickrNetworkCache = window.iepFlickrNetworkCache;
-      }
-      cacheFlickrUrlsFromText(event.data.payload);
-    }
-  });
-
   async function handleFastGrab(thumbUrl) {
     const maxData = await window.getTrueFlickrMax(thumbUrl);
     const downloadUrl = maxData?.url || thumbUrl;
@@ -191,13 +173,13 @@
         minWidth: 150,
         minHeight: 150,
         formats: this.createDefaultFormatState(),
-        disableSiteControls: true,
-        hoverDownloadEnabled: true,
+        disableSiteControls: false,
+        hoverDownloadEnabled: false,
         imageOrigin: "all",
         downloadMode: "zip",
         namingScheme: "original",
         subfolderName: "",
-        persistentMode: true,
+        persistentMode: false,
         windowScale: "big",
         themeStyle: "rich",
         galleryPagination: "unlimited",
@@ -211,7 +193,7 @@
         theme: "system",
         ignoredSelectors: "",
         preferLinkedOriginals: true,
-        showFab: true
+        showFab: false
       };
     }
 
@@ -341,7 +323,7 @@
 
         this.state.profileData = this.createDefaultProfileData(this.normalizeFilters({
           ...this.state.filters,
-          persistentMode: true,
+          persistentMode: false,
           stickyToolbar: true,
           themeStyle: "Rich",
           windowScale: "Big",
@@ -354,7 +336,7 @@
         // Ignore storage failures and fall back to defaults.
         this.state.profileData = this.createDefaultProfileData(this.normalizeFilters({
           ...this.state.filters,
-          persistentMode: true,
+          persistentMode: false,
           stickyToolbar: true,
           themeStyle: "Rich",
           windowScale: "Big",
@@ -1338,7 +1320,6 @@
           theme: this.state.filters.theme,
           rateLimitMs: this.state.filters.rateLimitMs,
           individualDownloadWarningThreshold: this.state.filters.individualDownloadWarningThreshold,
-          flickrNetworkCache: location.hostname.includes("flickr.com") ? Array.from(window.flickrNetworkCache || []).slice(-20) : [],
           flickrApiKey: location.hostname.includes("flickr.com") ? extractFlickrApiKey(document.documentElement.innerHTML) : "",
           images: this.state.previewImages.map((image) => ({
             ...image,
@@ -2527,43 +2508,6 @@ async function registerCandidates(imageMap, candidates, context) {
     return right.sourceRank - left.sourceRank;
   }
 
-  function cacheFlickrUrlsFromText(text) {
-    for (const url of extractFlickrUrlsFromText(text)) {
-      storeFlickrUrl(url);
-    }
-  }
-
-  function extractFlickrUrlsFromText(text) {
-    const normalizedText = String(text || "")
-      .replace(/\\u002F/gi, "/")
-      .replace(/\\u0026/gi, "&")
-      .replace(/\\u003F/gi, "?")
-      .replace(/\\u003D/gi, "=")
-      .replace(/\\\//g, "/")
-      .replace(/\\\?/g, "?")
-      .replace(/&amp;/gi, "&");
-    const urls = new Set();
-    const rawUrlPattern = /(?:https?:)?\/\/(?:live\.staticflickr\.com|farm[0-9]+\.staticflickr\.com)\/[^\s"'{}<>\\]+?\.(?:jpg|png|gif)(?:\?[^\s"'{}<>\\]*)?/ig;
-    const keyedUrlPattern = /["']url_((?:[3456]k)|[okhb])["']\s*:\s*["']([^"']+)["']/ig;
-    let match;
-
-    while ((match = rawUrlPattern.exec(normalizedText)) !== null) {
-      const cleanUrl = normalizeFlickrUrl(match[0]);
-      if (cleanUrl) {
-        urls.add(cleanUrl);
-      }
-    }
-
-    while ((match = keyedUrlPattern.exec(normalizedText)) !== null) {
-      const cleanUrl = normalizeFlickrUrl(match[2]);
-      if (cleanUrl) {
-        urls.add(cleanUrl);
-      }
-    }
-
-    return Array.from(urls);
-  }
-
   function normalizeFlickrUrl(url) {
     let cleanUrl = String(url || "")
       .trim()
@@ -2584,43 +2528,9 @@ async function registerCandidates(imageMap, candidates, context) {
     } else if (!/^https?:\/\//i.test(cleanUrl) && /(live\.staticflickr\.com|farm[0-9]+\.staticflickr\.com)/i.test(cleanUrl)) {
       cleanUrl = `https://${cleanUrl.replace(/^\/+/, "")}`;
     }
+    cleanUrl = cleanUrl.replace(/^http:/i, "https:");
 
     return cleanUrl;
-  }
-
-  function storeFlickrUrl(url) {
-    const cleanUrl = normalizeFlickrUrl(url);
-    if (!cleanUrl) {
-      return;
-    }
-
-    const photoIdMatch = cleanUrl.match(/\/(\d+)_[a-f0-9]+/i);
-    if (!photoIdMatch) {
-      return;
-    }
-
-    const photoId = photoIdMatch[1];
-    const currentUrl = window.iepFlickrData[photoId] || "";
-    const nextRank = getFlickrSizeRank(cleanUrl);
-    const currentRank = getFlickrSizeRank(currentUrl);
-
-    if (!currentUrl || nextRank > currentRank || (nextRank === currentRank && cleanUrl.length > currentUrl.length)) {
-      window.iepFlickrData[photoId] = cleanUrl;
-    }
-  }
-
-  function getFlickrSizeRank(url) {
-    const sizeMatch = String(url || "").match(/_((?:[3456]k)|[okhb])\.(?:jpg|png|gif)(?:[?#].*)?$/i);
-    const sizeKey = sizeMatch?.[1]?.toLowerCase() || "";
-    if (sizeKey === "6k") return 8;
-    if (sizeKey === "5k") return 7;
-    if (sizeKey === "4k") return 6;
-    if (sizeKey === "3k") return 5;
-    if (sizeKey === "o") return 4;
-    if (sizeKey === "k") return 3;
-    if (sizeKey === "h") return 2;
-    if (sizeKey === "b") return 1;
-    return 0;
   }
 
   function extractFlickrApiKey(markup) {
@@ -2743,9 +2653,7 @@ async function registerCandidates(imageMap, candidates, context) {
     }
 
     const isFlickrPage = window.location.hostname.includes("flickr.com");
-    const rawDom = isFlickrPage ? document.documentElement.innerHTML : "";
-    const cacheData = typeof window.flickrNetworkCache !== "undefined" ? JSON.stringify(window.flickrNetworkCache) : "";
-    const searchGround = cacheData + " " + rawDom;
+    const searchGround = isFlickrPage ? document.documentElement.innerHTML : "";
 
     console.log(`[IEP Debug] Deep Scanning:`, thumbUrl);
     const fastResult = scanTextForUrls(searchGround, premiumSizes);
@@ -2766,7 +2674,7 @@ async function registerCandidates(imageMap, candidates, context) {
 
       console.log(`[IEP Debug] ⏳ [ID: ${photoId}] Firing request...`);
       const res = await fetch(pageUrl, {
-        credentials: "include",
+        credentials: "omit",
         signal: controller.signal
       });
 
@@ -2821,10 +2729,6 @@ async function registerCandidates(imageMap, candidates, context) {
     const idMatch = normalizedThumbUrl.match(/\/(\d+)_[a-f0-9]+/i);
     if (idMatch) {
       const photoId = idMatch[1];
-      if (window.iepFlickrData && window.iepFlickrData[photoId]) {
-        return window.iepFlickrData[photoId];
-      }
-
       const scriptContent = Array.from(document.scripts)
         .filter((script) => {
           const className = typeof script.className === "string" ? script.className : "";
@@ -2857,10 +2761,8 @@ async function registerCandidates(imageMap, candidates, context) {
       const photoId = urlParts[2];
       const standardSecret = urlParts[3];
 
-      // Combine intercepted network cache and raw DOM text
-      const cacheData = typeof window.flickrNetworkCache !== "undefined" ? JSON.stringify(window.flickrNetworkCache) : "";
-      const rawDom = document.documentElement.innerHTML;
-      const searchGround = `${cacheData} ${rawDom}`;
+      // Search the raw DOM text
+      const searchGround = document.documentElement.innerHTML;
 
       // Search for the highly unique standard secret instead of the ID
       // This bypasses HTML clutter and zeroes in on the JSON data objects
@@ -3136,10 +3038,13 @@ async function registerCandidates(imageMap, candidates, context) {
     }
 
     try {
+      let absoluteHref = "";
       if (trimmed.startsWith("/")) {
-        return new URL(trimmed, window.location.origin).href;
+        absoluteHref = new URL(trimmed, window.location.origin).href;
+      } else {
+        absoluteHref = new URL(trimmed, document.baseURI).href;
       }
-      return new URL(trimmed, document.baseURI).href;
+      return absoluteHref.replace(/^http:/i, "https:");
     } catch (error) {
       return "";
     }
@@ -3390,7 +3295,7 @@ async function registerCandidates(imageMap, candidates, context) {
     }
 
     try {
-      const response = await fetch(url, { credentials: "include" });
+      const response = await fetch(url, { credentials: "omit" });
       if (response.ok) {
         const buffer = await response.arrayBuffer();
         const contentType = response.headers.get("content-type") || "";

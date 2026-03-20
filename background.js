@@ -5,7 +5,7 @@ const EXTRACTION_INDEX_KEY = "iepExtractionIndex";
 const MAX_STORED_SESSIONS = 5;
 const CONTEXT_MENU_ID = "iep-extract-image";
 const incognitoSessions = new Map();
-let persistentModeEnabled = true;
+let persistentModeEnabled = false;
 let persistentModeLoaded = false;
 
 api.runtime.onInstalled.addListener(() => {
@@ -169,7 +169,7 @@ async function fetchBinaryProbe(url) {
 
   try {
     const response = await fetch(url, {
-      credentials: "include"
+      credentials: "omit"
     });
 
     if (!response.ok) {
@@ -250,7 +250,7 @@ async function refreshPersistentModeCache() {
     const result = await api.storage.local.get(["iepSettingsManager", "iepFilters"]);
     persistentModeEnabled = resolvePersistentMode(result);
   } catch (_error) {
-    persistentModeEnabled = true;
+    persistentModeEnabled = false;
   }
 
   persistentModeLoaded = true;
@@ -355,75 +355,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// FLICKR DATA CACHE SETUP
-// Watch for Flickr tabs loading or updating
-api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (tab.url && tab.url.includes("flickr.com") && changeInfo.status === "loading") {
-    // Setup the data helper directly in the page's MAIN execution world
-    api.scripting.executeScript({
-      target: { tabId: tabId },
-      world: "MAIN",
-      func: setupFlickrHelper
-    }).catch(() => {});
-  }
-});
-
-// This function runs INSIDE the actual webpage's context
-function setupFlickrHelper() {
-  if (window.iepHelperActive) return;
-  window.iepHelperActive = true;
-
-  const relevantFlickrRequestPattern = /(flickr\.interestingness|flickr\.interestingness\.getList|flickr\.photos\.getExplore|\/explore\b|\/search\b|\/graphql\b|services\/rest\/\?method=flickr\.interestingness\.getList|services\/rest\/\?method=flickr\.photos\.getExplore)/i;
-  const relevantFlickrPayloadPattern = /(live\.staticflickr\.com|farm[0-9]+\.staticflickr\.com|"url_[okhb]"|'url_[okhb]'|url_[okhb]\b)/i;
-
-  function isRelevantFlickrPayload(requestUrl, text) {
-    const safeUrl = String(requestUrl || "");
-    const safeText = String(text || "");
-    return relevantFlickrRequestPattern.test(safeUrl) || relevantFlickrPayloadPattern.test(safeText);
-  }
-
-  function postFlickrPayload(text) {
-    if (!text) {
-      return;
-    }
-
-    window.postMessage({ type: "IEP_FLICKR_DATA_CACHED", payload: text }, "*");
-  }
-
-  // 1. MODERN FETCH HELPER
-  const originalFetch = window.fetch;
-  window.fetch = async function (...args) {
-    const response = await originalFetch.apply(this, args);
-    try {
-      const clone = response.clone();
-      const requestUrl = typeof args[0] === "string"
-        ? args[0]
-        : args[0]?.url || response.url || "";
-      clone.text().then((text) => {
-        if (isRelevantFlickrPayload(requestUrl, text)) {
-          postFlickrPayload(text);
-        }
-      }).catch(() => {});
-    } catch (e) {}
-    return response;
-  };
-
-  // 2. LEGACY XHR HELPER (For Pagination & Group Pools)
-  const originalXHROpen = window.XMLHttpRequest.prototype.open;
-  window.XMLHttpRequest.prototype.open = function (method, url) {
-    this.__iepFlickrRequestUrl = url;
-    this.addEventListener("load", function () {
-      try {
-        const text = this.responseText;
-        const requestUrl = this.responseURL || this.__iepFlickrRequestUrl || "";
-        if (isRelevantFlickrPayload(requestUrl, text)) {
-          postFlickrPayload(text);
-        }
-      } catch (e) {}
-    });
-    return originalXHROpen.apply(this, arguments);
-  };
-}
 
 
 
