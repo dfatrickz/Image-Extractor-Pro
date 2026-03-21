@@ -96,8 +96,12 @@
   let lastMouseY = 0;
 
   async function handleFastGrab(thumbUrl) {
-    const maxData = await window.getTrueFlickrMax(thumbUrl);
-    const downloadUrl = maxData?.url || thumbUrl;
+    const shouldAutoUpgrade = Boolean(window.__imageExtractorProContentController?.state?.filters?.autoUpgradeResolutions);
+    let downloadUrl = thumbUrl;
+    if (shouldAutoUpgrade && typeof window.getTrueFlickrMax === "function") {
+      const maxData = await window.getTrueFlickrMax(thumbUrl);
+      downloadUrl = maxData?.url || thumbUrl;
+    }
 
     return api.runtime.sendMessage({
       type: "IEP_QUICK_DOWNLOAD",
@@ -179,15 +183,16 @@
         downloadMode: "zip",
         namingScheme: "original",
         subfolderName: "",
+        autoUpgradeResolutions: false,
         persistentMode: false,
         windowScale: "big",
         themeStyle: "rich",
         galleryPagination: "unlimited",
-        lazyLoadBypass: true,
+        lazyLoadBypass: false,
         autoCheckDuplicates: false,
         stickyToolbar: true,
         hideDeleteWarning: false,
-        startMinimized: true,
+        startMinimized: false,
         rateLimitMs: 0,
         individualDownloadWarningThreshold: 30,
         theme: "system",
@@ -219,6 +224,7 @@
         galleryPagination: ["50", "100", "200", "500", "unlimited"].includes(String(filters.galleryPagination || "").toLowerCase())
           ? String(filters.galleryPagination).toLowerCase()
           : defaultFilters.galleryPagination,
+        autoUpgradeResolutions: typeof filters.autoUpgradeResolutions === "boolean" ? filters.autoUpgradeResolutions : defaultFilters.autoUpgradeResolutions,
         showFab: typeof filters.showFab === "boolean" ? filters.showFab : defaultFilters.showFab,
         startMinimized: typeof filters.startMinimized === "boolean" ? filters.startMinimized : defaultFilters.startMinimized
       };
@@ -399,9 +405,14 @@
         this.host = document.createElement("div");
         this.host.id = UI_HOST_ID;
         this.host.style.all = "initial";
-        this.host.style.position = "fixed";
-        this.host.style.inset = "0";
-        this.host.style.zIndex = "2147483647";
+        // Force the root container out of the document flow so it cannot break host website layouts
+        this.host.style.setProperty("position", "fixed", "important");
+        this.host.style.setProperty("top", "0", "important");
+        this.host.style.setProperty("left", "0", "important");
+        this.host.style.setProperty("width", "0", "important");
+        this.host.style.setProperty("height", "0", "important");
+        this.host.style.setProperty("overflow", "visible", "important");
+        this.host.style.setProperty("z-index", "2147483647", "important");
         this.host.style.pointerEvents = "none";
 
         this.shadowRoot = this.host.attachShadow({ mode: "open" });
@@ -445,6 +456,7 @@
         downloadModeRadios: Array.from(this.shadowRoot.querySelectorAll("input[name='iepDownloadMode']")),
         namingSchemeSelect: this.shadowRoot.getElementById("iep-naming-scheme"),
         subfolderNameInput: this.shadowRoot.getElementById("iepSubfolderName"),
+        autoUpgradeToggle: this.shadowRoot.getElementById("iepAutoUpgrade"),
         imageOriginSelect: this.shadowRoot.getElementById("iepImageOrigin"),
         themeSelect: this.shadowRoot.getElementById("iepTheme"),
         persistentModeToggle: this.shadowRoot.getElementById("iepPersistentMode"),
@@ -750,6 +762,10 @@
       this.elements.preferLinkedOriginalsCheckbox.addEventListener("change", () => {
         this.updateFiltersFromInputs({ rescan: true });
       });
+
+      this.elements.autoUpgradeToggle.addEventListener("change", () => {
+        this.updateFiltersFromInputs();
+      });
     }
     toggleSettingsModal(forceValue) {
       const nextValue = typeof forceValue === "boolean" ? forceValue : !this.state.settingsMode;
@@ -760,17 +776,41 @@
     closeSettingsModal() {
       this.toggleSettingsModal(false);
     }
-    async openPanel() {
+    async maximize() {
       await this.mountUi();
       this.state.minimized = false;
       this.render();
+      if (this.elements.panel) {
+        this.elements.panel.hidden = false;
+        this.elements.panel.style.display = "flex";
+      }
+      if (this.elements.fab) {
+        this.elements.fab.hidden = !this.state.showFab;
+        this.elements.fab.style.display = this.state.showFab ? "flex" : "none";
+      }
     }
 
-    minimizePanel() {
+    minimize() {
       this.stopSelectionMode();
       this.state.minimized = true;
       this.closeSettingsModal();
       this.render();
+      if (this.elements.panel) {
+        this.elements.panel.hidden = true;
+        this.elements.panel.style.display = "none";
+      }
+      if (this.elements.fab) {
+        this.elements.fab.hidden = false;
+        this.elements.fab.style.display = "flex";
+      }
+    }
+
+    async openPanel() {
+      await this.maximize();
+    }
+
+    minimizePanel() {
+      this.minimize();
     }
     closeUi() {
       this.stopSelectionMode();
@@ -821,7 +861,8 @@
         || this.state.statusMessage !== "Run a page extract or select an area, then review the match count before opening the gallery.";
 
       this.elements.panel.hidden = this.state.minimized;
-      this.elements.fab.hidden = !this.state.minimized || !this.state.showFab;
+      this.elements.fab.hidden = !this.state.minimized && !this.state.showFab;
+      this.elements.fab.style.display = this.state.minimized || this.state.showFab ? "flex" : "none";
       this.elements.settingsModal.hidden = !this.state.settingsMode;
       this.elements.shell.dataset.theme = this.state.filters.theme || "system";
       this.elements.shell.classList.remove("iep-scale-small", "iep-scale-medium", "iep-scale-big");
@@ -833,6 +874,7 @@
       this.elements.minWidthInput.value = String(this.state.filters.minWidth);
       this.elements.minHeightInput.value = String(this.state.filters.minHeight);
       this.elements.subfolderNameInput.value = this.state.filters.subfolderName;
+      this.elements.autoUpgradeToggle.checked = Boolean(this.state.filters.autoUpgradeResolutions);
       this.elements.namingSchemeSelect.value = this.state.filters.namingScheme;
       this.elements.imageOriginSelect.value = this.state.filters.imageOrigin;
       this.elements.themeSelect.value = this.state.filters.theme;
@@ -869,6 +911,7 @@
       }
 
       this.elements.subfolderNameInput.disabled = this.state.busy;
+      this.elements.autoUpgradeToggle.disabled = this.state.busy;
       this.elements.namingSchemeSelect.disabled = this.state.busy;
       this.elements.imageOriginSelect.disabled = this.state.busy;
       this.elements.themeSelect.disabled = this.state.busy;
@@ -1007,6 +1050,7 @@
       this.state.filters.minWidth = Math.max(0, Number.parseInt(this.elements.minWidthInput.value || "0", 10) || 0);
       this.state.filters.minHeight = Math.max(0, Number.parseInt(this.elements.minHeightInput.value || "0", 10) || 0);
       this.state.filters.subfolderName = String(this.elements.subfolderNameInput.value || "").trim();
+      this.state.filters.autoUpgradeResolutions = Boolean(this.elements.autoUpgradeToggle.checked);
       this.state.filters.namingScheme = this.elements.namingSchemeSelect.value || "original";
       this.state.filters.imageOrigin = this.elements.imageOriginSelect.value || "all";
       this.state.filters.theme = this.elements.themeSelect.value || "system";
@@ -1316,6 +1360,7 @@
           downloadMode: this.state.filters.downloadMode,
           namingScheme: this.state.filters.namingScheme,
           subfolderName: this.getResolvedSubfolderName(),
+          autoUpgradeResolutions: this.state.filters.autoUpgradeResolutions,
           imageOrigin: this.state.filters.imageOrigin,
           theme: this.state.filters.theme,
           rateLimitMs: this.state.filters.rateLimitMs,
@@ -1626,7 +1671,7 @@
     getTemplate() {
       const shouldStartMinimized = Boolean(this.state.filters.startMinimized);
       const shellClassName = shouldStartMinimized ? "iep-shell iep-minimized" : "iep-shell";
-      const initialFabHidden = !shouldStartMinimized || !this.state.showFab ? " hidden" : "";
+      const initialFabHidden = !shouldStartMinimized && !this.state.showFab ? " hidden" : "";
       const initialPanelHidden = shouldStartMinimized ? " hidden" : "";
       return `
         <style>
@@ -1732,7 +1777,7 @@
           @media (prefers-color-scheme: dark) { .iep-shell[data-theme="system"] .iep-settings-panel h3, .iep-shell[data-theme="system"] .iep-dark-label { color: #f0f0f0 !important; } }
           .iep-shell { position: fixed; inset: 0; pointer-events: none; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
           .iep-fab, .iep-panel, .iep-settings-modal { box-sizing: border-box; pointer-events: auto; }
-          .iep-fab { position: fixed; width: 56px; height: 56px; border: none; border-radius: 18px; background: var(--iep-fab-gradient); color: #f8fafc; box-shadow: 0 20px 42px rgba(15, 23, 42, 0.28); display: grid; place-items: center; cursor: pointer; padding: 0; overflow: hidden; }
+          .iep-fab { position: fixed; width: 56px; height: 56px; border: none; border-radius: 18px; background: var(--iep-fab-gradient); color: #f8fafc; box-shadow: 0 20px 42px rgba(15, 23, 42, 0.28); display: flex !important; justify-content: center !important; align-items: center !important; cursor: pointer; padding: 0 !important; overflow: hidden; }
           .iep-fab::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.28), transparent 48%); pointer-events: none; }
           .iep-fab-grip { position: absolute; inset: 0; cursor: grab; }
           .iep-fab-icon, .iep-fab-icon::before, .iep-fab-icon::after { pointer-events: none; }
@@ -1826,7 +1871,7 @@
         <div id="iepShell" class="${shellClassName}" data-theme="system">
           <button id="iepFab" class="iep-fab" type="button" aria-label="Open Image Extractor Pro"${initialFabHidden}><span id="iepFabGrip" class="iep-fab-grip" aria-hidden="true"></span><span class="iep-fab-icon" aria-hidden="true"></span></button>
           <section id="iepPanel" class="iep-panel" role="dialog" aria-modal="false" aria-label="Image Extractor Pro panel"${initialPanelHidden}>
-            <header class="iep-panel-header"><div><p class="iep-kicker">Image Extractor Pro</p><h1 class="iep-title">Scoped Image Extraction</h1><p class="iep-subtitle">Review images before opening the full gallery.</p></div><div class="iep-header-controls"><div class="iep-window-actions"><button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false">&#9881;</button><button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button><button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button></div></div></header>
+            <header class="iep-panel-header"><div><p class="iep-kicker">Image Extractor Pro</p><h1 class="iep-title">Scoped Image Extraction</h1><p class="iep-subtitle">Review images before opening the full gallery.</p></div><div class="iep-header-controls"><div class="iep-window-actions"><button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false"><span style="color: #60a5fa;">&#9881;</span></button><button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button><button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button></div></div></header>
             <div class="iep-body">
               <section class="iep-card"><div class="iep-action-grid"><button id="iepExtractAllButton" class="iep-button iep-button-primary" type="button">Extract All from Page</button><button id="iepSelectAreaButton" class="iep-button iep-button-secondary" type="button">Select Area to Extract</button></div><div id="iepPreviewContainer" class="iep-preview-container"><div class="iep-preview-inner"><div class="iep-preview-stack"><div id="iepScanProgressWrapper" style="display: none; padding: 12px; background: var(--iep-bg-secondary, #1e293b); border-radius: 6px; margin-bottom: 10px;"><div style="width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden;"><div id="iepScanProgressBar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.1s ease-out;"></div></div><div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #94a3b8;"><span id="iepScanStatusText">Initializing scan...</span><span id="iepScanPercentText">0%</span></div></div><p id="iepSelectionLabel" class="iep-selection-label">No extraction scope selected yet.</p><p id="iepPreviewCount" class="iep-preview-count">Found 0 images matching your filters.</p><p id="iepPreviewMeta" class="iep-preview-meta">Use one of the extract actions above to preview the result count first.</p><section id="iepStatus" class="iep-status" data-tone="default" aria-live="polite"><p id="iepStatusMessage">Run a page extract or select an area, then review the match count before opening the gallery.</p></section><div class="iep-actions"><button id="iepCancelButton" class="iep-button iep-button-secondary" type="button" hidden>Clear Preview</button><button id="iepReviewButton" class="iep-button iep-button-primary" type="button" hidden>Review &amp; Download</button></div></div></div></div></section>
               <section class="iep-card"><h2>Quick Settings</h2><div style="display: grid; gap: 10px;"><label class="iep-toggle-row"><input id="iepQuickLazyLoad" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)</span><button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></label><label class="iep-toggle-row"><input id="iepQuickSiteControls" type="checkbox"><span>Disable website image controls</span><button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></label></div></section>
@@ -1840,7 +1885,7 @@
             <div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div>
             <section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings">
               <div class="iep-modal-header">
-                <h2>Settings</h2>
+                <h2 style="color: #ffffff;">Settings</h2>
                 <p>Configure download behavior, gallery layout, and the persistent launcher.</p>
               </div>
               <div class="iep-profile-manager" style="display: flex; gap: 8px; align-items: center; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #334155);">
@@ -1879,6 +1924,7 @@
                         <option value="source">Source</option>
                       </select>
                     </label>
+                    <label class="iep-toggle-row"><input id="iepAutoUpgrade" type="checkbox"><span>Automatically Upgrade Resolutions<button class="iep-help-btn" data-anchor="auto-upgrade" title="Visits each image link in the background to find higher resolution photos.">&#63;</button></span></label>
                   </div>
                 </section>
                 <section class="iep-settings-panel">
@@ -1890,7 +1936,7 @@
                     <label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls</span><button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></label>
                     <label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab</span><button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Downloads the image under your cursor instantly without opening the full gallery.">&#63;</button></label>
                     <label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages</span><button class="iep-help-btn" data-anchor="show-fab" title="Show or hide the floating launch button.">&#63;</button></label>
-                    <label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox" checked><span>Start Minimized</span><button class="iep-help-btn" data-anchor="start-minimized" title="Start as a small button instead of a full panel.">&#63;</button></label>
+                    <label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox"><span>Start Minimized</span><button class="iep-help-btn" data-anchor="start-minimized" title="Start as a small button instead of a full panel.">&#63;</button></label>
                     <label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking</span><button class="iep-help-btn" data-anchor="auto-dupe" title="Automatically scan and hide visual duplicates.">&#63;</button></label>
                     <label class="iep-field"><span>Rate Limit / Delay per image (ms) <button class="iep-help-btn" type="button" data-anchor="rate-limit" title="Adds a delay between downloads to reduce site throttling or browser pressure.">&#63;</button></span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label>
                     <label class="iep-field"><span>Individual Download Warning Threshold<button class="iep-help-btn" data-anchor="warning-threshold" title="Warns before downloading too many single files.">&#63;</button></span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label>
@@ -2098,7 +2144,13 @@
     }
     backgroundNodes.push(...Array.from(root.querySelectorAll("[style*='background-image'], [data-src], [data-original], [data-bg], [data-background], [data-full-src], [data-pin-media], [data-image], [data-media]")));
 
+    let processedNodes = 0;
+
     for (const node of imageNodes) {
+      processedNodes += 1;
+      if (processedNodes % 20 === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+      }
       if (!(node instanceof Element) || shouldIgnoreElement(node, ignoredRules)) {
         continue;
       }
@@ -2114,6 +2166,10 @@
     }
 
     for (const node of backgroundNodes) {
+      processedNodes += 1;
+      if (processedNodes % 20 === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+      }
       if (!(node instanceof Element) || shouldIgnoreElement(node, ignoredRules) || node instanceof HTMLImageElement || node instanceof HTMLPictureElement) {
         continue;
       }
@@ -2269,7 +2325,13 @@
   }
 
 async function registerCandidates(imageMap, candidates, context) {
+    let processedCandidates = 0;
+
     for (const candidate of candidates) {
+      processedCandidates += 1;
+      if (processedCandidates % 20 === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+      }
       const normalizedUrl = await normalizeCandidateUrl(candidate.url);
       if (!normalizedUrl) {
         continue;
@@ -3695,7 +3757,7 @@ async function registerCandidates(imageMap, candidates, context) {
     }
 
     let finalUrl = baseurl;
-    if (typeof window.getTrueFlickrMax === "function") {
+    if (controller.state.filters.autoUpgradeResolutions && typeof window.getTrueFlickrMax === "function") {
       const maxData = await window.getTrueFlickrMax(baseurl);
       finalUrl = maxData?.url || baseurl;
     }

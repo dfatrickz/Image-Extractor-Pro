@@ -57,107 +57,174 @@
   <h3>Welcome!</h3>
   <p>This guide explains all the features and settings available in the extension.</p>
 
-  <h2>Download Preferences</h2>
+<h2>Download Preferences</h2>
 
+<div id="auto-upgrade" class="setting-block">
+    <h3>Automatically Upgrade Resolutions</h3>
+    <h4><strong>What it does</strong></h4>
+    <p>When enabled, the extension will invisibly visit every single image link in the background during the extraction process to hunt for the absolute highest resolution version of the photo available on the host's servers.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Keep this OFF for faster extractions (you can always click the manual "Upgrade Resolutions" button inside the gallery later). Turn it ON if you want the extension to automatically find the massive 4K/6K source files right away, though this will make the initial extraction take slightly longer.</p>
+  </div>
+  
   <div id="download-mode" class="setting-block">
     <h3>Default Download Mode</h3>
-	<h4><strong>What it does</strong></h4>
-    <p> Sets whether you want to download a single compressed ZIP file containing all images, or download each image individually.
-	<br><br>
-	<h4><strong>When to use it</strong></h4> 
-	<p>ZIP is usually faster, cleaner, and recommended. Individual files are good if you are only downloading 2 or 3 images.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Sets whether you want to download a single compressed ZIP file containing all images, or download each image individually.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>ZIP is usually faster, cleaner, and recommended. Individual files are good if you are only downloading 2 or 3 images.</p>
   </div>
 
   <div id="subfolder-name" class="setting-block">
     <h3>Subfolder Name</h3>
-    <p><strong>What it does:</strong> Automatically creates a named folder inside your computer's default Downloads folder to store the extracted images.<br><br><strong>When to use it:</strong> Great for organizing large batches so they don't clutter your main downloads folder (e.g., naming it "Vacation_Photos").</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Automatically creates a named folder inside your computer's default Downloads folder to store the extracted images.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Great for organizing large batches so they don't clutter your main downloads folder (e.g., naming it "Vacation_Photos").</p>
   </div>
 
   <div id="naming-scheme" class="setting-block">
     <h3>File Naming Scheme</h3>
-    <p><strong>What it does:</strong> Determines what the files are called on your computer. "Original Name" tries to keep the source name. "Sequential" renames them to image_1, image_2, etc.<br><br><strong>When to use it:</strong> Sequential is very helpful if the original website uses messy, random strings of numbers and letters for their file names.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Determines what the files are called on your computer. "Original Name" tries to keep the source name. "Sequential" renames them to image_1, image_2, etc.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Sequential is very helpful if the original website uses messy, random strings of numbers and letters for their file names.</p>
   </div>
 
-<div id="image-origin" class="setting-block">
-    <h3>Image Origin</h3>
-    <p><strong>What it does:</strong> Displays a small badge or text under each extracted image in the gallery showing exactly where it was found in the website's code (e.g., standard image, CSS background, or a hidden data attribute).<br><br><strong>When to use it:</strong> Helpful for web developers or advanced users who are curious about how a specific website is building its pages or hiding its photos.</p>
-  </div>
 
   <h2>Safety & Behavior</h2>
 
   <div id="lazy-load" class="setting-block">
     <h3>Lazy Load Bypass (Auto-Scroll)</h3>
-    <p><strong>What it does:</strong> Many modern websites only load images as you scroll down the page (called "Lazy Loading"). By default, the extractor will automatically scroll the page for you to wake up those hidden images before extracting.<br><br><strong>When to use it:</strong> Keep this ON if you want the scanner to automatically scroll and find everything. Turn it OFF if you want the scanner to skip scrolling and run instantly (which is faster, but will only extract images currently visible on your screen).</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Many modern websites only load images as you scroll down the page (called "Lazy Loading"). By default, the extractor will automatically scroll the page for you to wake up those hidden images before extracting.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Keep this ON if you want the scanner to automatically scroll and find everything. Turn it OFF if you want the scanner to skip scrolling and run instantly (which is faster, but will only extract images currently visible on your screen).</p>
   </div>
 
   <div id="site-controls" class="setting-block">
     <h3>Disable website image controls</h3>
-    <p><strong>What it does:</strong> Sites like Instagram or Flickr often place invisible "shields" over their photos or hijack your mouse to stop you from right-clicking or saving them.<br><br><strong>When to use it:</strong> When enabled, it forcefully restores your browser's native Right-Click menu and removes invisible overlays so you can use the Fast Grab feature.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Sites like Instagram or Flickr often place invisible "shields" over their photos or hijack your mouse to stop you from right-clicking or saving them.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>When enabled, it forcefully restores your browser's native Right-Click menu and removes invisible overlays so you can use the Fast Grab feature.</p>
   </div>
 
- <div id="fast-grab" class="setting-block">
+  <div id="fast-grab" class="setting-block">
     <h3>Enable Fast Grab</h3>
-    <p><strong>What it does:</strong> Whenever you hover your mouse over an image on any website, a small blue download button will appear in the corner of that picture. Clicking it will instantly find the highest resolution version and download it to your computer.<br><br><strong>When to use it:</strong> Useful for quick, single-image downloads without needing to open the full review gallery.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Whenever you hover your mouse over an image on any website, a small blue download button will appear in the corner of that picture. Clicking it will instantly find the highest resolution version and download it to your computer.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Useful for quick, single-image downloads without needing to open the full review gallery.</p>
   </div>
-
 
   <div id="persistent-mode" class="setting-block">
     <h3>Persistent Floating Icon</h3>
-    <p><strong>What it does:</strong> Injects the floating Image Extractor icon on every website automatically.<br><br><strong>When to use it:</strong> If you use the tool frequently, keep this on. If you only want the tool to appear when you click the puzzle piece in your browser toolbar, turn it off.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Injects the floating Image Extractor icon on every website automatically.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>If you use the tool frequently, keep this on. If you only want the tool to appear when you click the puzzle piece in your browser toolbar, turn it off.</p>
   </div>
 
   <div id="show-fab" class="setting-block">
     <h3>Show Floating Icon on Pages</h3>
-    <p><strong>What it does:</strong> Displays or hides the floating button inside the webpage.<br><br><strong>When to use it:</strong> Turn this off if you find the button distracting and prefer to only launch the extractor from your browser's extension menu.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Displays or hides the floating button inside the webpage.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Turn this off if you find the button distracting and prefer to only launch the extractor from your browser's extension menu.</p>
   </div>
 
   <div id="start-minimized" class="setting-block">
     <h3>Start Minimized</h3>
-    <p><strong>What it does:</strong> When enabled, the extension opens as just a small floating button. When disabled, the full extraction panel opens immediately when the page loads.<br><br><strong>When to use it:</strong> Keep this checked to prevent the large panel from popping up and blocking your view every time you navigate to a new page.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>When enabled, the extension opens as just a small floating button. When disabled, the full extraction panel opens immediately when the page loads.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Keep this checked to prevent the large panel from popping up and blocking your view every time you navigate to a new page.</p>
   </div>
 
   <div id="auto-dupe" class="setting-block">
     <h3>Enable automatic duplicate checking</h3>
-    <p><strong>What it does:</strong> Uses an advanced visual scanner to find and hide exact duplicate images before you even open the review gallery.<br><br><strong>When to use it:</strong> Helpful for messy websites like Pinterest, Tumblr, or blogs that repeat the same thumbnail multiple times.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Uses an advanced visual scanner to find and hide exact duplicate images before you even open the review gallery.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Helpful for messy websites like Pinterest, Tumblr, or blogs that repeat the same thumbnail multiple times.</p>
   </div>
-
 
   <div id="rate-limit" class="setting-block">
     <h3>Rate Limit / Delay per image (ms)</h3>
-    <p><strong>What it does:</strong> Adds a tiny artificial pause (in milliseconds) between each download when you are downloading a large batch of individual files.<br><br><strong>When to use it:</strong> If a website is blocking your downloads because you are requesting files too fast, set this to 500 or 1000 to slow the extension down and look more like a human.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Adds a tiny artificial pause (in milliseconds) between each download when you are downloading a large batch of individual files.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>If a website is blocking your downloads because you are requesting files too fast, set this to 500 or 1000 to slow the extension down and look more like a human.</p>
   </div>
 
   <div id="warning-threshold" class="setting-block">
     <h3>Individual Download Warning Threshold</h3>
-    <p><strong>What it does:</strong> Pops up a confirmation warning before you accidentally download a massive amount of individual files.<br><br><strong>When to use it:</strong> Leave this around 30. It prevents you from accidentally freezing your browser by downloading 500 individual files at once instead of using the safer ZIP Archive mode.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Pops up a confirmation warning before you accidentally download a massive amount of individual files.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>It prevents you from accidentally freezing your browser by downloading 500 individual files at once instead of using the safer ZIP Archive mode.</p>
   </div>
 
 
   <h2>Appearance</h2>
 
-  <div id="sticky-toolbar" class="setting-block">
-    <h3>Sticky Toolbar</h3>
-    <p><strong>What it does:</strong> Keeps the gallery's top menu (with the Download and Select All buttons) permanently pinned to the top of your screen while you scroll down through your extracted images.<br><br><strong>When to use it:</strong> Enable this if you prefer not to scroll all the way back to the top to download your selections.</p>
-  </div>
-
   <div id="window-size" class="setting-block">
     <h3>Window Size</h3>
-    <p><strong>What it does:</strong> Changes the physical size (Small, Medium, Big) of the floating extractor panel on the webpage.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Changes the physical size (Small, Medium, Big) of the floating extractor panel on the webpage.</p>
   </div>
 
   <div id="theme" class="setting-block">
     <h3>Theme</h3>
-    <p><strong>What it does:</strong> Forces the extension to use Light mode, Dark mode, or automatically follow your computer's system settings.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Forces the extension to use Light mode, Dark mode, or automatically follow your computer's system settings.</p>
   </div>
 
   <div id="theme-style" class="setting-block">
     <h3>Theme Style</h3>
-    <p><strong>What it does:</strong> Adjusts the visual flair of the review gallery. You can choose between a Minimal look, Standard, or Rich (which adds shadows and gradients).</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Adjusts the visual flair of the review gallery. You can choose between a Minimal look, Standard, or Rich (which adds shadows and gradients).</p>
   </div>
 
   <div id="images-per-page" class="setting-block">
     <h3>Images per page</h3>
-    <p><strong>What it does:</strong> Paginates the review gallery, breaking it up into multiple pages if you extract a massive amount of images.<br><br><strong>When to use it:</strong> If you extract 2,000 images and the gallery feels slow or laggy to scroll through, set this to 100 or 200 to speed up performance.</p>
+    <h4><strong>What it does</strong></h4>
+    <p>Paginates the review gallery, breaking it up into multiple pages if you extract a massive amount of images.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>If you extract 2,000 images and the gallery feels slow or laggy to scroll through, set this to 100 or 200 to speed up performance.</p>
+  </div>
+
+  <div id="image-origin" class="setting-block">
+    <h3>Image Origin</h3>
+    <h4><strong>What it does</strong></h4>
+    <p>Displays a small badge or text under each extracted image in the gallery showing exactly where it was found in the website's code (e.g., standard image, CSS background, or a hidden data attribute).</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Helpful for web developers or advanced users who are curious about how a specific website is building its pages or hiding its photos.</p>
+  </div>
+
+  <div id="sticky-toolbar" class="setting-block">
+    <h3>Sticky Toolbar</h3>
+    <h4><strong>What it does</strong></h4>
+    <p>Keeps the gallery's top menu (with the Download and Select All buttons) permanently pinned to the top of your screen while you scroll down through your extracted images.</p>
+    <br><br>
+    <h4><strong>When to use it</strong></h4>
+    <p>Enable this if you prefer not to scroll all the way back to the top to download your selections.</p>
   </div>
 
 

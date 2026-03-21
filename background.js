@@ -6,6 +6,7 @@ const MAX_STORED_SESSIONS = 5;
 const CONTEXT_MENU_ID = "iep-extract-image";
 const incognitoSessions = new Map();
 let persistentModeEnabled = false;
+const activeManualTabs = new Set();
 let persistentModeLoaded = false;
 
 api.runtime.onInstalled.addListener(() => {
@@ -23,6 +24,11 @@ api.runtime.onInstalled.addListener(() => {
 void refreshPersistentModeCache();
 
 api.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id) {
+    return;
+  }
+
+  activeManualTabs.add(tab.id);
   await toggleFloatingUi(tab);
 });
 
@@ -74,8 +80,22 @@ api.runtime.onMessage.addListener((message, sender) => {
 
 api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "complete") {
-    void maybeInjectPersistentUi(tabId, tab?.url || "");
+    void (async () => {
+      const manuallyActivated = activeManualTabs.has(tabId);
+      if (!manuallyActivated) {
+        const enabled = await getPersistentModeEnabled();
+        if (!enabled) {
+          return;
+        }
+      }
+
+      await maybeInjectPersistentUi(tabId, tab?.url || "", { skipPersistentCheck: manuallyActivated });
+    })();
   }
+});
+
+api.tabs.onRemoved.addListener((tabId) => {
+  activeManualTabs.delete(tabId);
 });
 
 api.storage.onChanged.addListener((changes, areaName) => {
@@ -133,6 +153,7 @@ async function openGalleryFromContent(tab, message) {
       selectionLabel,
       downloadMode: message.downloadMode || "zip",
       subfolderName: message.subfolderName || "",
+      autoUpgradeResolutions: typeof message.autoUpgradeResolutions === "boolean" ? message.autoUpgradeResolutions : false,
       imageOrigin: message.imageOrigin || "all",
       theme: ["system", "dark", "light"].includes(String(message.theme || "system").toLowerCase()) ? String(message.theme || "system").toLowerCase() : "system",
       rateLimitMs: Math.max(0, Number.parseInt(message.rateLimitMs || "0", 10) || 0),
@@ -220,12 +241,12 @@ async function quickDownloadImage(url) {
   }
 }
 
-async function maybeInjectPersistentUi(tabId, url) {
+async function maybeInjectPersistentUi(tabId, url, options = {}) {
   if (!tabId || !url || isRestrictedUrl(url)) {
     return;
   }
 
-  const enabled = await getPersistentModeEnabled();
+  const enabled = options.skipPersistentCheck ? true : await getPersistentModeEnabled();
   if (!enabled) {
     return;
   }
