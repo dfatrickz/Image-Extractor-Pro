@@ -54,7 +54,12 @@ api.runtime.onMessage.addListener((message, sender) => {
     case "IEP_FETCH_BINARY_PROBE":
       return fetchBinaryProbe(message.url);
     case "IEP_QUICK_DOWNLOAD":
-      return quickDownloadImage(message.url);
+      api.downloads.download({
+        url: message.url,
+        filename: message.filename || undefined,
+        saveAs: true
+      }).catch((err) => console.error("Quick download failed:", err));
+      return Promise.resolve({ ok: true });
     case "IEP_OPEN_GUIDE":
       {
         const anchor = message.anchor || "";
