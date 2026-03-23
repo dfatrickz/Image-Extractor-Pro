@@ -935,6 +935,37 @@ textarea::placeholder {
   font-weight: 600;
 }
 
+.iep-btn-view {
+  align-items: center;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 6px;
+  color: #10b981 !important;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: center;
+  padding: 6px 12px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.iep-btn-view:hover {
+  background: rgba(16, 185, 129, 0.2);
+  text-decoration: none;
+}
+
+.iep-gallery-content-box.theme-minimal .image-card {
+  gap: 8px;
+  padding: 8px;
+}
+
+.iep-gallery-content-box.theme-standard .card-title,
+.iep-gallery-content-box.theme-standard .card-alt {
+  display: none !important;
+}
+
 
 
 

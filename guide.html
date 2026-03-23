@@ -12,7 +12,7 @@
       --text-soft: #475569;
       --border: #e2e8f0;
       --accent: #2563eb;
-      --highlight: rgba(253, 224, 71, 0.4);
+      --highlight: rgba(253, 224, 71, 0.5);
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -22,7 +22,7 @@
         --text-soft: #94a3b8;
         --border: #334155;
         --accent: #60a5fa;
-        --highlight: rgba(234, 179, 8, 0.25);
+        --highlight: rgba(234, 179, 8, 0.4);
       }
     }
     body {
@@ -43,12 +43,66 @@
       border-radius: 12px;
       padding: 20px;
       margin-bottom: 16px;
-      transition: background-color 0.5s ease;
+      transition: border-color 0.3s, box-shadow 0.3s, background-color 0.3s;
 	  text-align: center;
+    }
+    /* Keep the container normal */
+    .setting-block.is-highlighted {
+      border-color: var(--border);
+      box-shadow: none;
+      background-color: transparent;
+    }
+
+    /* Apply the text-marker effect strictly to the paragraphs inside */
+    .setting-block.is-highlighted p {
+      background-color: var(--highlight);
+      border-radius: 2px;
+      display: inline;
+      box-shadow: 4px 0 0 var(--highlight), -4px 0 0 var(--highlight);
+      color: var(--text-main);
     }
     .setting-block h3 { margin-top: 0; display: grid; align-items: center; gap: 8px; text-align: center; }
 	.setting-block h4 { color: #60a5fa; margin-top: 0; display: grid; align-items: center; gap: 8px; text-align: center; }
     .setting-block p { color: var(--text-soft); margin-bottom: 0; text-align: center; }
+    /* Quick Jump Menu Styles */
+    .toc-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 30px 0 40px;
+      text-align: left;
+    }
+    .toc-container h3 { margin-top: 0; text-align: center; color: var(--text-main); }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      margin-top: 20px;
+    }
+    .toc-section h4 {
+      color: var(--text-soft);
+      text-transform: uppercase;
+      font-size: 0.85em;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin-top: 0;
+      margin-bottom: 12px;
+      text-align: left;
+    }
+    .toc-link {
+      display: block;
+      text-decoration: none;
+      color: var(--accent);
+      font-size: 0.9em;
+      padding: 6px 0;
+      transition: color 0.2s, padding-left 0.2s;
+    }
+    .toc-link:hover {
+      color: var(--text-main);
+      padding-left: 6px;
+    }
   </style>
 </head>
 <body>
@@ -56,6 +110,42 @@
   <h1>Image Extractor Pro Guide</h1>
   <h3>Welcome!</h3>
   <p>This guide explains all the features and settings available in the extension.</p>
+
+  <div class="toc-container">
+    <h3>Quick Jump to Setting</h3>
+    <div class="toc-grid">
+      <div class="toc-section">
+        <h4>Download Preferences</h4>
+        <a href="#auto-upgrade" class="toc-link">Auto-Upgrade Resolutions</a>
+        <a href="#download-mode" class="toc-link">Default Download Mode</a>
+        <a href="#subfolder-name" class="toc-link">Subfolder Name</a>
+        <a href="#naming-scheme" class="toc-link">File Naming Scheme</a>
+      </div>
+
+      <div class="toc-section">
+        <h4>Safety & Behavior</h4>
+        <a href="#lazy-load" class="toc-link">Lazy Load Bypass</a>
+        <a href="#site-controls" class="toc-link">Disable Site Controls</a>
+        <a href="#fast-grab" class="toc-link">Enable Fast Grab</a>
+        <a href="#persistent-mode" class="toc-link">Persistent Floating Icon</a>
+        <a href="#show-fab" class="toc-link">Show Floating Icon</a>
+        <a href="#start-minimized" class="toc-link">Start Minimized</a>
+        <a href="#auto-dupe" class="toc-link">Auto Duplicate Checking</a>
+        <a href="#rate-limit" class="toc-link">Rate Limit / Delay</a>
+        <a href="#warning-threshold" class="toc-link">Download Warning</a>
+      </div>
+
+      <div class="toc-section">
+        <h4>Appearance</h4>
+        <a href="#window-size" class="toc-link">Window Size</a>
+        <a href="#theme" class="toc-link">Theme</a>
+        <a href="#theme-style" class="toc-link">Theme Style</a>
+        <a href="#images-per-page" class="toc-link">Images per page</a>
+        <a href="#image-origin" class="toc-link">Image Origin</a>
+        <a href="#sticky-toolbar" class="toc-link">Sticky Toolbar</a>
+      </div>
+    </div>
+  </div>
 
 <h2>Download Preferences</h2>
 
@@ -131,7 +221,7 @@
     <p>Injects the floating Image Extractor icon on every website automatically.</p>
     <br><br>
     <h4><strong>When to use it</strong></h4>
-    <p>If you use the tool frequently, keep this on. If you only want the tool to appear when you click the puzzle piece in your browser toolbar, turn it off.</p>
+    <p>If you use the tool frequently. If you only want the tool to appear when you click the add-on in your browser toolbar, turn it off.</p>
   </div>
 
   <div id="show-fab" class="setting-block">
@@ -236,15 +326,8 @@
 
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        target.style.transition = 'none';
-        target.style.backgroundColor = 'rgba(253, 224, 71, 0.7)';
-        target.style.borderColor = '#2563eb';
-
-        setTimeout(() => {
-          target.style.transition = 'background-color 2.5s ease-out, border-color 2.5s ease-out';
-          target.style.backgroundColor = '';
-          target.style.borderColor = '';
-        }, 400);
+        document.querySelectorAll('.is-highlighted').forEach(el => el.classList.remove('is-highlighted'));
+        target.classList.add('is-highlighted');
       }
     }
 

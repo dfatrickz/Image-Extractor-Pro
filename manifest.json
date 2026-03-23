@@ -12,7 +12,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "<all_urls>",
+  	"<all_urls>",
     "*://*.flickr.com/*"
   ],
   "background": {
@@ -25,11 +25,13 @@
   },
   "icons": {
     "16": "icon-16.png",
-    "32": "icon-32.png"
+    "32": "icon-32.png",
+	"48": "icon-48.png",
+	"128": "icon-128.png"
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "image-extractor-pro@codex.local",
+      "id": "image-extractor-pro@github.demigui",
       "strict_min_version": "121.0"
     }
   }

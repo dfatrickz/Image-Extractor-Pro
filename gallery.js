@@ -1105,7 +1105,8 @@ function renderGrid(matchingImages) {
     renderedDimensionsElement.textContent = formatRenderedDimensions(image);
     renderedDimensionsElement.hidden = !renderedDimensionsElement.textContent;
     openLink.href = image.url;
-    openLink.textContent = "View Image";
+    openLink.textContent = "View";
+    openLink.classList.add("iep-btn-view");
     attachLightboxTrigger(openLink, image.url);
     if (deleteButton) {
       deleteButton.dataset.url = image.url || "";
