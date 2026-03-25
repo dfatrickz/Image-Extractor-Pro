@@ -730,7 +730,8 @@ textarea::placeholder {
   cursor: pointer;
   z-index: 2;
   transition: all 0.2s ease;
-  opacity: 0;
+  backdrop-filter: blur(4px);
+  opacity: 0.85;
 }
 .image-card:hover .card-fast-download,
 .card-fast-download:focus-visible {
@@ -1014,6 +1015,5 @@ textarea::placeholder {
 .iep-collapsible-card[open] .field-note {
   margin-top: 14px;
 }
-
 
 

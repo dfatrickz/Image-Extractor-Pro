@@ -516,6 +516,10 @@
         profileSelect: this.shadowRoot.getElementById("iepProfileSelect"),
         saveProfileButton: this.shadowRoot.getElementById("iepSaveProfileBtn"),
         deleteProfileButton: this.shadowRoot.getElementById("iepDeleteProfileBtn"),
+        exportSettingsButton: this.shadowRoot.getElementById("iepBtnExportSettings"),
+        importSettingsInput: this.shadowRoot.getElementById("iepBtnImportSettings"),
+        resetSettingsButton: this.shadowRoot.getElementById("iepBtnResetSettings"),
+        deleteDataButton: this.shadowRoot.getElementById("iepBtnDeleteData"),
         downloadModeRadios: Array.from(this.shadowRoot.querySelectorAll("input[name='iepDownloadMode']")),
         namingSchemeSelect: this.shadowRoot.getElementById("iep-naming-scheme"),
         subfolderNameInput: this.shadowRoot.getElementById("iepSubfolderName"),
@@ -574,6 +578,40 @@
         void this.openPanel();
       });
 
+      // --- SMART HORIZONTAL CAROUSEL SCROLL ---
+      if (this.elements.settingsHorizontalWrapper) {
+        this.elements.settingsHorizontalWrapper.addEventListener("wheel", (event) => {
+          // Only intercept pure vertical mouse wheel movements
+          if (event.deltaY !== 0 && Math.abs(event.deltaX) < Math.abs(event.deltaY)) {
+            let target = event.target;
+            let canScrollVertically = false;
+
+            // Check if the cursor is hovering over an element that needs to scroll vertically
+            while (target && target !== this.elements.settingsHorizontalWrapper) {
+              if (target.scrollHeight > target.clientHeight) {
+                const style = window.getComputedStyle(target);
+                if (style.overflowY === "auto" || style.overflowY === "scroll") {
+                  // Only yield to the vertical scroll if it hasn't hit the absolute top or bottom limit
+                  const isAtTop = target.scrollTop === 0 && event.deltaY < 0;
+                  const isAtBottom = Math.abs((target.scrollTop + target.clientHeight) - target.scrollHeight) <= 1 && event.deltaY > 0;
+                  if (!isAtTop && !isAtBottom) {
+                    canScrollVertically = true;
+                    break;
+                  }
+                }
+              }
+              target = target.parentElement;
+            }
+
+            // If the panel under the cursor doesn't need to scroll vertically, slide the carousel horizontally!
+            if (!canScrollVertically) {
+              event.preventDefault();
+              this.elements.settingsHorizontalWrapper.scrollLeft += event.deltaY;
+            }
+          }
+        }, { passive: false });
+      }
+
       this.elements.fabGrip.addEventListener("pointerdown", (event) => {
         this.startFabDrag(event);
       });
@@ -600,15 +638,6 @@
         this.closeSettingsModal();
       });
 
-      if (this.elements.settingsHorizontalWrapper) {
-        this.elements.settingsHorizontalWrapper.addEventListener("wheel", (event) => {
-          if (event.deltaY !== 0) {
-            event.preventDefault();
-            this.elements.settingsHorizontalWrapper.scrollLeft += event.deltaY;
-          }
-        }, { passive: false });
-      }
-
       this.elements.profileSelect.addEventListener("change", () => {
         const nextActiveId = this.elements.profileSelect.value;
         if (!nextActiveId || nextActiveId === this.state.profileData.activeId) {
@@ -624,7 +653,7 @@
       });
 
       this.elements.saveProfileButton.addEventListener("click", () => {
-        const name = window.prompt("Enter new profile name:");
+        const name = window.prompt("Enter new profile name:\n\n(Note: This action does not affect the current page you are browsing.)");
         if (!name || !name.trim()) {
           return;
         }
@@ -656,7 +685,7 @@
           return;
         }
 
-        const confirmed = window.confirm(`Delete the profile "${activeProfile.name}"?`);
+        const confirmed = window.confirm(`Delete the profile "${activeProfile.name}"?\n\n(Note: This action does not affect the current page you are browsing.)`);
         if (!confirmed) {
           return;
         }
@@ -852,6 +881,69 @@
         if (this.elements.autoUpgradeToggle) this.elements.autoUpgradeToggle.checked = event.target.checked;
         this.updateFiltersFromInputs();
       });
+
+      // --- DATA & PRIVACY LOGIC ---
+      const btnExport = this.shadowRoot.getElementById("iepBtnExportSettings");
+      if (btnExport) {
+        btnExport.addEventListener("click", async () => {
+          try {
+            const data = await api.storage.local.get(null);
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "FastGrab_Settings.json";
+            a.click();
+            URL.revokeObjectURL(url);
+          } catch (_error) {
+            alert("Failed to export settings.\n\n(Note: This action does not affect the current page you are browsing.)");
+          }
+        });
+      }
+
+      const btnImport = this.shadowRoot.getElementById("iepBtnImportSettings");
+      if (btnImport) {
+        btnImport.addEventListener("change", async (event) => {
+          const file = event.target.files[0];
+          if (!file) return;
+          try {
+            // Use file.text() to reliably await the file data instead of FileReader callbacks
+            const text = await file.text();
+            const importedData = JSON.parse(text);
+            await api.storage.local.set(importedData);
+            alert("Settings imported successfully! Please reopen the panel to apply.\n\n(Note: This action does not affect the current page you are browsing.)");
+          } catch (_error) {
+            alert("Invalid settings file.\n\n(Note: This action does not affect the current page you are browsing.)");
+          } finally {
+            event.target.value = ""; // Safely reset the input exactly once
+          }
+        });
+      }
+
+      const btnReset = this.shadowRoot.getElementById("iepBtnResetSettings");
+      if (btnReset) {
+        btnReset.addEventListener("click", async () => {
+          if (confirm("Are you sure you want to reset all settings to their defaults?\n\n(Note: This action does not affect the current page you are browsing.)")) {
+            await api.storage.local.remove(["iepSettingsManager", "iepFilters"]);
+            await this.loadPersistedFilters();
+            await this.saveManagerToStorage();
+            this.renderProfileUI();
+            this.render();
+            alert("Settings reset to defaults.\n\n(Note: This action does not affect the current page you are browsing.)");
+          }
+        });
+      }
+
+      const btnDelete = this.shadowRoot.getElementById("iepBtnDeleteData");
+      if (btnDelete) {
+        btnDelete.addEventListener("click", async () => {
+          if (confirm("WARNING: This will delete ALL your saved settings, cache, and extension data. Continue?\n\n(Note: This action does not affect the current page you are browsing.)")) {
+            await api.storage.local.clear();
+            window.iepLastRightClickedUrl = null;
+            alert("All data deleted. Please refresh the page.\n\n(Note: This action does not affect the current page you are browsing.)");
+          }
+        });
+      }
     }
     toggleSettingsModal(forceValue) {
       const nextValue = typeof forceValue === "boolean" ? forceValue : !this.state.settingsMode;
@@ -1412,7 +1504,8 @@
         this.state.scannedImages = extractedImages.map((image, index) => ({
           ...image,
           clientId: `${Date.now()}-${index}-${hashString(image.url || String(index))}`,
-          selected: false
+          selected: false,
+          originalIndex: index
         }));
         this.refreshPreviewFromScannedImages();
       } catch (error) {
@@ -1952,9 +2045,9 @@
           .iep-modal-header { display: grid; gap: 4px; }
           .iep-modal-header h2 { margin: 0; font-size: 18px; }
           .iep-modal-header p { margin: 0; color: var(--iep-text-soft); font-size: 13px; }
-          .settings-horizontal-wrapper { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden !important; align-items: stretch !important; gap: 20px; height: 100%; width: 100%; padding-bottom: 6px; }
-          .settings-horizontal-wrapper > .iep-settings-panel { flex: 1 1 0 !important; min-width: 280px !important; max-width: none !important; }
-          .iep-settings-panel { background: var(--iep-surface); border: 1px solid var(--iep-border); border-radius: 18px; padding: 14px; box-shadow: var(--iep-shadow-soft); overflow-y: auto; overflow-x: hidden; max-height: 100%; display: flex; flex-direction: column; }
+          .settings-horizontal-wrapper { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden !important; align-items: stretch !important; gap: 20px; height: 100%; width: 100%; padding-bottom: 6px; scroll-snap-type: x mandatory; scroll-behavior: smooth; }
+          .settings-horizontal-wrapper > .iep-settings-panel { flex: 1 1 0 !important; min-width: 280px !important; max-width: none !important; scroll-snap-align: start; }
+          .iep-settings-panel { background: var(--iep-surface); border: 1px solid var(--iep-border); border-radius: 18px; padding: 14px; box-shadow: var(--iep-shadow-soft); overflow-y: auto; overflow-x: hidden; max-height: 100%; display: flex; flex-direction: column; box-sizing: border-box; }
           .iep-settings-panel::-webkit-scrollbar { width: 6px; }
           .iep-settings-panel::-webkit-scrollbar-thumb { background: var(--iep-border-strong); border-radius: 10px; }
           .iep-settings-panel h3 { margin: 0; font-size: 14px; }
@@ -2116,6 +2209,20 @@
                     </label>
                   </div>
                 </section>
+                <section class="iep-settings-panel">
+                  <h3>Data &amp; Privacy</h3>
+                  <p>Manage your configuration backups or completely erase all extension data.</p>
+                  <div class="iep-settings-stack" style="margin-top: 8px;">
+                    <button id="iepBtnExportSettings" class="iep-button iep-button-secondary" type="button">Export Settings</button>
+                    <label class="iep-button iep-button-secondary" style="text-align: center; cursor: pointer;">
+                      Import Settings
+                      <input type="file" id="iepBtnImportSettings" accept=".json" style="display: none;">
+                    </label>
+                    <button id="iepBtnResetSettings" class="iep-button iep-button-secondary" type="button">Reset to Defaults</button>
+                    <button id="iepBtnDeleteData" class="iep-button" type="button" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">Delete My Data</button>
+                  </div>
+                  <div id="iepDataStatus" style="text-align: center; font-size: 13px; margin-top: 14px; height: 16px; font-weight: 500; transition: opacity 0.3s; opacity: 0;"></div>
+                </section>
               </div>
             </section>
           </div>
@@ -2141,7 +2248,7 @@
       onProgress?.("Fetching metadata and filtering...", "info");
       onScanProgress?.(0, "Filtering and enriching images...");
       await enrichImagesWithSourceMetadata(images, sourceProbeCache, onScanProgress);
-      return dedupeImages(images).sort((left, right) => getImageArea(right) - getImageArea(left));
+      return dedupeImages(images);
     } finally {
       restoreScrollSnapshot(snapshot);
     }
@@ -3264,6 +3371,11 @@ async function registerCandidates(imageMap, candidates, context) {
     // Unsplash: Strip dynamic Imgix processing parameters to get the raw original file
     if (url.includes("unsplash.com/")) {
       return url.split("?")[0];
+    }
+
+    // Pinterest: Upgrade thumbnails (e.g., /236x/, /736x/) to their raw original files
+    if (url.includes("i.pinimg.com/")) {
+      return url.replace(/(i\.pinimg\.com)\/(?:\d+x)\//i, "$1/originals/");
     }
 
     return url;

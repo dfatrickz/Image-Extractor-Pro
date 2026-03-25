@@ -404,21 +404,47 @@ function syncResolveProgressContainer() {
     return;
   }
 
-  if (!window.iepSettings?.autoUpgradeResolutions) {
-    if (!canShowManualUpgradeAction()) {
-      hideResolveContainer();
-      return;
-    }
+  const pendingCards = getDisplayedFlickrCards({ onlyPending: true });
+  const hasPending = pendingCards.length > 0;
 
-    renderResolveManualAction();
+  if (hasPending) {
+    if (!window.iepSettings?.autoUpgradeResolutions) {
+      renderResolveManualAction();
+    } else {
+      renderResolveProgressState("Auto-upgrading resolutions...", {
+        color: "inherit",
+        showSpinner: false,
+        fontWeight: 400
+      });
+    }
     return;
   }
 
-  renderResolveProgressState("Auto-upgrading resolutions...", {
-    color: "inherit",
-    showSpinner: false,
-    fontWeight: 400
-  });
+  if (window.flickrUpgradedCount > 0 || window.flickrFailedItems.length > 0 || window.iepCancelUpgrade) {
+    if (window.iepCancelUpgrade) {
+      renderResolveProgressState("Upgrade Cancelled", {
+        color: "#ef4444",
+        showSpinner: false,
+        fontWeight: 600
+      });
+    } else if (window.flickrFailedItems.length > 0) {
+      renderResolveProgressState(`Images upgraded ${window.flickrUpgradedCount} | Failed ${window.flickrFailedItems.length}`, {
+        color: "#f59e0b",
+        showSpinner: false,
+        showRetry: true,
+        fontWeight: 600
+      });
+    } else {
+      renderResolveProgressState(`Images upgraded ${window.flickrUpgradedCount} | Failed 0`, {
+        color: "#10b981",
+        showSpinner: false,
+        fontWeight: 600
+      });
+    }
+    return;
+  }
+
+  hideResolveContainer();
 }
 
 function queueVisibleFlickrUpgradesIfNeeded() {
@@ -770,7 +796,8 @@ async function initialize() {
           selected: false,
           isDuplicate: false,
           duplicateReason: "",
-          clientId: `${index}-${hashString(image.url || String(index))}`
+          clientId: image.clientId || `${index}-${hashString(image.url || String(index))}`,
+          originalIndex: typeof image.originalIndex === "number" ? image.originalIndex : index
         }))
       : [];
     originalOrder = [...state.images];
@@ -1169,6 +1196,9 @@ function getSortedImages(images) {
 }
 
 function getOriginalOrderIndex(image) {
+  if (typeof image.originalIndex === "number") {
+    return image.originalIndex;
+  }
   const index = originalOrder.findIndex((entry) => entry.clientId === image.clientId || entry.url === image.url);
   return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
 }

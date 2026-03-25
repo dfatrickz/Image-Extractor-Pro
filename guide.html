@@ -328,30 +328,6 @@
   </div>
 
 
-  <script>
-    function triggerHighlight(hash) {
-      if (!hash) return;
-      const targetId = hash.startsWith('#') ? hash : `#${hash}`;
-      const target = document.querySelector(targetId);
-
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        document.querySelectorAll('.is-highlighted').forEach(el => el.classList.remove('is-highlighted'));
-        target.classList.add('is-highlighted');
-      }
-    }
-
-    window.addEventListener('DOMContentLoaded', () => triggerHighlight(window.location.hash));
-    window.addEventListener('hashchange', () => triggerHighlight(window.location.hash));
-
-    const api = typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null);
-    if (api && api.runtime && api.runtime.onMessage) {
-      api.runtime.onMessage.addListener((msg) => {
-        if (msg.type === "IEP_SCROLL_TO" && msg.anchor) {
-          triggerHighlight(msg.anchor);
-        }
-      });
-    }
-  </script>
+  <script src="guide.js" defer></script>
 </body>
 </html>
