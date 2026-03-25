@@ -714,6 +714,32 @@ textarea::placeholder {
   opacity: 0.6;
 }
 
+.card-fast-download {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  width: 30px;
+  height: 30px;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  border-radius: 50%;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+.image-card:hover .card-fast-download,
+.card-fast-download:focus-visible {
+  opacity: 1;
+}
+.card-fast-download:hover {
+  background: var(--accent);
+  color: #ffffff;
+}
 .selected-indicator {
   align-items: center;
   background: rgba(37, 99, 235, 0.12);
@@ -966,7 +992,28 @@ textarea::placeholder {
   display: none !important;
 }
 
-
+/* Collapsible Gallery Cards */
+.iep-collapsible-card summary {
+  cursor: pointer;
+  list-style: none;
+  outline: none;
+}
+.iep-collapsible-card summary::-webkit-details-marker {
+  display: none;
+}
+.collapsible-marker::before {
+  content: "+";
+  font-size: 26px;
+  line-height: 1;
+  color: var(--accent);
+  font-weight: 300;
+}
+.iep-collapsible-card[open] .collapsible-marker::before {
+  content: "−";
+}
+.iep-collapsible-card[open] .field-note {
+  margin-top: 14px;
+}
 
 
 

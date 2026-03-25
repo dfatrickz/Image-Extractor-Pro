@@ -131,6 +131,7 @@ const confirmDeleteButton = document.getElementById("iepConfirmDelete");
 const backToTopButton = document.getElementById("iep-back-to-top");
 const stickyStatsElement = document.getElementById("iep-sticky-stats");
 const imageCardTemplate = document.getElementById("imageCardTemplate");
+const collapsibles = document.querySelectorAll(".iep-collapsible-card");
 const SELECTED_INDICATOR_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
 let loadingOverlayFrame = 0;
 let pendingLoadingOverlayState = null;
@@ -139,6 +140,20 @@ window.flickrFailedItems = window.flickrFailedItems || [];
 window.flickrUpgradedCount = window.flickrUpgradedCount || 0;
 window.iepSettings = window.iepSettings || {};
 window.iepCancelUpgrade = false;
+
+// Synchronize the Filters and Download Options panels
+let isSyncing = false;
+collapsibles.forEach((card) => {
+  card.addEventListener("toggle", (e) => {
+    if (isSyncing) return;
+    isSyncing = true;
+    const isOpen = e.target.open;
+    collapsibles.forEach((c) => {
+      if (c !== e.target) c.open = isOpen;
+    });
+    isSyncing = false;
+  });
+});
 
 const state = {
   sessionId: new URLSearchParams(window.location.search).get("session") || "",
@@ -771,6 +786,8 @@ async function initialize() {
       folderNameInput.value = preferredFolder || "Extracted Images";
     }
 
+    updateDownloadControls();
+
     if (state.images.length) {
       if (state.gallerySettings.autoCheckDuplicates) {
         await runDuplicateCheck();
@@ -1195,6 +1212,36 @@ function matchesActiveFilters(image) {
 
 function handleGridClick(event) {
   const deleteButton = event.target.closest(".iep-delete-card-btn");
+  const fastDownloadBtn = event.target.closest(".card-fast-download");
+  if (fastDownloadBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    const card = fastDownloadBtn.closest(".image-card");
+    const url = card?.dataset.url;
+    const clientId = card?.dataset.clientId;
+    
+    if (url) {
+      // Calculate the proper filename and extension using the existing gallery helper
+      let filename = undefined;
+      const image = state.images.find((img) => img.clientId === clientId);
+      if (image) {
+        const extension = detectOriginalExtension(image) || "jpg";
+        filename = getOriginalDownloadFilename(url, extension, 1);
+      }
+
+      api.downloads.download({ url, filename, saveAs: false }).catch(() => {});
+      // Flash green to show success
+      fastDownloadBtn.style.background = "#16a34a";
+      fastDownloadBtn.style.color = "#ffffff";
+      fastDownloadBtn.style.borderColor = "#16a34a";
+      setTimeout(() => {
+        fastDownloadBtn.style.background = "";
+        fastDownloadBtn.style.color = "";
+        fastDownloadBtn.style.borderColor = "";
+      }, 700);
+    }
+    return;
+  }
   if (deleteButton) {
     event.preventDefault();
     event.stopPropagation();
@@ -2202,36 +2249,38 @@ function updateDownloadControls() {
   const controlsDisabled = state.images.length === 0 || state.isDownloading;
   const downloadMode = galleryDownloadModeSelect?.value || state.downloadPreferences.downloadMode;
   state.downloadPreferences.downloadMode = downloadMode;
-  const resolvedFolderPath = normalizeRelativePath(
-    folderNameInput.value
-      || state.downloadPreferences.subfolderName
-      || state.session?.pageTitle
-      || "Extracted Images"
-  );
-  const resolvedZipName = ensureZipFilename(resolvedFolderPath || state.session?.pageTitle || "Extracted Images");
+  // Grab the live value from the input field if it exists, otherwise fall back to state/default
+  const folderName = folderNameInput && folderNameInput.value.trim() !== ""
+    ? normalizeRelativePath(folderNameInput.value.trim()) || folderNameInput.value.trim()
+    : (state.downloadPreferences?.subfolderName || "Image Extractor Pro");
+  const promptSaveAs = saveModeSelect.value === "prompt";
 
   qualityValue.textContent = `${qualityPercent}%`;
   qualityField.hidden = !["jpg", "webp"].includes(outputFormat);
   qualityInput.disabled = controlsDisabled || qualityField.hidden;
 
-  if (downloadModeSummary) {
-    downloadModeSummary.textContent = downloadMode === "zip"
-      ? `Current mode: ZIP Archive. Selected files will be packaged into ${resolvedZipName}${resolvedFolderPath ? ` with ${resolvedFolderPath}/ inside the archive.` : "."}`
-      : `Current mode: Individual Files. Selected images will download separately${resolvedFolderPath ? ` into ${resolvedFolderPath}/.` : "."}`;
-  }
-
   if (downloadButtonLabel) {
-    downloadButtonLabel.textContent = downloadMode === "zip" ? "Download Selected ZIP" : "Download Selected";
+    downloadButtonLabel.textContent = "Download Selected";
   }
 
-  if (saveModeSelect.value === "prompt") {
-    saveModeHint.textContent = downloadMode === "zip"
-      ? "Firefox will open one Save As dialog for the ZIP archive."
-      : "Firefox will open a Save As dialog for each selected file because the downloads API does not expose one shared folder picker for the whole batch.";
+  if (downloadMode === "zip") {
+    if (downloadModeSummary) {
+      downloadModeSummary.textContent = "Current mode: ZIP Archive. Files will be packaged together into a single ZIP file.";
+    }
+    if (saveModeHint) {
+      saveModeHint.textContent = promptSaveAs
+        ? "You will be asked where to save the ZIP file on your computer."
+        : `The ZIP file will be saved to your downloads folder as "${folderName}.zip".`;
+    }
   } else {
-    saveModeHint.textContent = downloadMode === "zip"
-      ? "The ZIP archive will use Firefox's standard downloads location, with your selected archive filename."
-      : "Default downloads keep the current Image Extractor Pro folder flow inside Firefox's configured downloads location.";
+    if (downloadModeSummary) {
+      downloadModeSummary.textContent = "Current mode: Individual Files. Images will be downloaded separately.";
+    }
+    if (saveModeHint) {
+      saveModeHint.textContent = promptSaveAs
+        ? "Warning: You will be asked where to save EVERY single file individually."
+        : `Files will be saved automatically to your downloads folder inside the "${folderName}" subfolder.`;
+    }
   }
 }
 

@@ -8,12 +8,10 @@
     "contextMenus",
     "scripting",
     "storage",
-    "downloads",
-    "tabs"
+    "downloads"
   ],
   "host_permissions": [
-  	"<all_urls>",
-    "*://*.flickr.com/*"
+  	"<all_urls>"
   ],
   "background": {
     "scripts": [

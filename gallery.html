@@ -55,13 +55,15 @@
       </section>
 
       <section class="control-grid">
-        <article class="control-card surface">
-          <div class="panel-heading">
-            <h2>Filters</h2>
+        <details class="control-card surface iep-collapsible-card">
+          <summary class="panel-heading">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 style="margin: 0;">Filters</h2>
+              <span class="collapsible-marker"></span>
+            </div>
             <p>Hide small assets after extraction without rerunning the scan.</p>
-          </div>
-
-          <div class="form-grid">
+          </summary>
+          <div class="form-grid" style="margin-top: 18px;">
             <label class="form-field">
               <span class="field-label">Min width (px)</span>
               <input id="minWidthInput" class="field-input" type="number" min="0" step="50" value="0">
@@ -93,15 +95,17 @@
               <button id="resetFiltersButton" class="ghost-button" type="button">Clear Filters</button>
             </div>
           </div>
-        </article>
+        </details>
 
-        <article class="control-card surface">
-          <div class="panel-heading">
-            <h2>Download Options</h2>
+        <details class="control-card surface iep-collapsible-card">
+          <summary class="panel-heading">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 style="margin: 0;">Download Options</h2>
+              <span class="collapsible-marker"></span>
+            </div>
             <p>Keep the original file or convert to supported formats before saving individually or as a ZIP archive.</p>
-          </div>
-
-          <div class="form-grid">
+          </summary>
+          <div class="form-grid" style="margin-top: 18px;">
             <label class="form-field">
               <span class="field-label">Output format</span>
               <select id="outputFormatSelect" class="field-input">
@@ -138,7 +142,7 @@
           <p class="field-note" id="saveModeHint">
             Default downloads keep the current Image Extractor Pro folder flow. â€œAsk where to saveâ€ uses Firefoxâ€™s Save As dialog for each file.
           </p>
-        </article>
+        </details>
       </section>
 
       <section class="stats-row stats-row-wide">
@@ -231,6 +235,9 @@
 
     <template id="imageCardTemplate">
       <article class="image-card surface" tabindex="0" role="button" aria-pressed="true">
+        <button class="card-fast-download" type="button" aria-label="Download Image" title="Download Image">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M8 10l4 4 4-4"></path><path d="M5 20h14"></path></svg>
+        </button>
         <div class="selected-indicator" aria-hidden="true"></div>
         <div class="card-media">
           <img loading="lazy" alt="">
@@ -250,8 +257,8 @@
           <p class="card-rendered-dimensions"></p>
         </div>
         <div class="meta-row meta-row-end">
-          <button class="iep-delete-card-btn" data-url="" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer;">Delete</button>
-          <a class="inline-link card-open-link" href="#" target="_blank" rel="noreferrer noopener">Open</a>
+          <button class="iep-delete-card-btn" data-url="" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; border-radius: 6px 6px 6px 12px;">Delete</button>
+          <a class="inline-link card-open-link" href="#" target="_blank" rel="noreferrer noopener" style="border-radius: 6px 6px 12px 6px;">Open</a>
         </div>
       </article>
     </template>

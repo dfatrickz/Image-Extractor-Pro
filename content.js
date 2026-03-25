@@ -131,6 +131,11 @@
       }
     }
 
+    // Ensure the extracted currentSrc passes through the global upgrader (Unsplash, imgsrc, etc.)
+    if (typeof resolveAbsoluteUrl === "function") {
+      finalUrl = resolveAbsoluteUrl(finalUrl) || finalUrl;
+    }
+
     return { targetImg: img, url: finalUrl };
   };
 
@@ -1883,7 +1888,7 @@
           .iep-shell.iep-scale-small .iep-panel { width: 344px; max-height: min(540px, calc(100vh - 24px)); }
           .iep-shell.iep-scale-medium .iep-panel { width: 392px; max-height: min(620px, calc(100vh - 24px)); }
           .iep-shell.iep-scale-big .iep-panel { width: 460px; max-height: min(760px, calc(100vh - 24px)); }
-          .iep-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 18px 14px; background: var(--iep-header-bg); border-bottom: 1px solid var(--iep-border); cursor: grab; user-select: none; }
+          .iep-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 18px 14px; background: var(--iep-header-bg); border-bottom: 1px solid var(--iep-border); cursor: grab; user-select: none; position: relative; }
           .iep-panel-header.is-dragging { cursor: grabbing; }
           .iep-header-controls { display: grid; justify-items: end; gap: 8px; flex-shrink: 0; }
           .iep-kicker { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--iep-accent); font-weight: 700; }
@@ -1963,12 +1968,32 @@
           .iep-surfer-hover-btn.is-success { background: #16a34a; }
           .iep-selection-outline { position: fixed; border: 2px solid var(--iep-accent); background: var(--iep-accent-soft); box-shadow: 0 0 0 9999px var(--iep-selection-overlay); border-radius: 8px; pointer-events: none; }
           @media (max-width: 860px) { .iep-settings-panel { flex-basis: 260px; min-width: 260px; } }
+          .iep-github-link:hover { color: var(--iep-text-main) !important; }
           [hidden] { display: none !important; }
         </style>
         <div id="iepShell" class="${shellClassName}" data-theme="system">
           <button id="iepFab" class="iep-fab" type="button" aria-label="Open Image Extractor Pro"${initialFabHidden}><span id="iepFabGrip" class="iep-fab-grip" aria-hidden="true"></span><span class="iep-fab-icon" aria-hidden="true"></span></button>
           <section id="iepPanel" class="iep-panel" role="dialog" aria-modal="false" aria-label="Image Extractor Pro panel"${initialPanelHidden}>
-            <header class="iep-panel-header"><div><p class="iep-kicker">Image Extractor Pro</p><h1 class="iep-title">Scoped Image Extraction</h1><p class="iep-subtitle">Extract, filter, and manage images from the current page.</p></div><div class="iep-header-controls"><div class="iep-window-actions"><button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false"><span style="color: #60a5fa;">&#9881;</span></button><button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button><button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button></div></div></header>
+            <header class="iep-panel-header">
+              <div>
+                <p class="iep-kicker">Image Extractor Pro</p>
+                <h1 class="iep-title">Scoped Image Extraction</h1>
+                <p class="iep-subtitle">Extract, filter, and manage images from the current page.</p>
+              </div>
+              <div class="iep-header-controls">
+                <div class="iep-window-actions">
+                  <button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false"><span style="color: #60a5fa;">&#9881;</span></button>
+                  <button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button>
+                  <button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button>
+                </div>
+              </div>
+              <div style="position: absolute; bottom: 14px; right: 18px;">
+                <a href="https://github.com/dfatrickz/Image-Extractor-Pro/issues" target="_blank" class="iep-github-link" style="font-size: 12px; color: var(--iep-text-soft); text-decoration: none; display: flex; align-items: center; gap: 4px; transition: color 0.2s;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5c.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34c-.46-1.16-1.11-1.47-1.11-1.47c-.91-.62.07-.6.07-.6c1 .07 1.53 1.03 1.53 1.03c.87 1.52 2.34 1.07 2.91.83c.09-.65.35-1.09.63-1.34c-2.22-.25-4.55-1.11-4.55-4.92c0-1.11.38-2 1.03-2.71c-.1-.25-.45-1.29.1-2.64c0 0 .84-.27 2.75 1.02c.79-.22 1.65-.33 2.5-.33c.85 0 1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02c.55 1.35.2 2.39.1 2.64c.65.71 1.03 1.6 1.03 2.71c0 3.82-2.34 4.66-4.57 4.91c.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2Z"></path></svg>
+                  Report Issue
+                </a>
+              </div>
+            </header>
             <div class="iep-body">
               <section class="iep-card"><div class="iep-action-grid"><button id="iepExtractAllButton" class="iep-button iep-button-primary" type="button">Extract All from Page</button><button id="iepSelectAreaButton" class="iep-button iep-button-secondary" type="button">Select Area to Extract</button></div><div id="iepPreviewContainer" class="iep-preview-container"><div class="iep-preview-inner"><div class="iep-preview-stack"><div id="iepScanProgressWrapper" style="display: none; padding: 12px; background: var(--iep-bg-secondary, #1e293b); border-radius: 6px; margin-bottom: 10px;"><div style="width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden;"><div id="iepScanProgressBar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.1s ease-out;"></div></div><div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #94a3b8;"><span id="iepScanStatusText">Initializing scan...</span><span id="iepScanPercentText">0%</span></div></div><p id="iepSelectionLabel" class="iep-selection-label">No extraction scope selected yet.</p><p id="iepPreviewCount" class="iep-preview-count">Found 0 images matching your filters.</p><p id="iepPreviewMeta" class="iep-preview-meta">Use one of the extract actions above to preview the result count first.</p><section id="iepStatus" class="iep-status" data-tone="default" aria-live="polite"><p id="iepStatusMessage">Run a page extract or select an area, then review the match count before opening the gallery.</p></section><div class="iep-actions"><button id="iepCancelButton" class="iep-button iep-button-secondary" type="button" hidden>Clear Preview</button><button id="iepReviewButton" class="iep-button iep-button-primary" type="button" hidden>Review &amp; Download</button></div></div></div></div></section>
               <section class="iep-card"><h2>Quick Settings</h2><div style="display: grid; gap: 10px;"><label class="iep-toggle-row"><input id="iepQuickAutoUpgrade" type="checkbox"><span>Auto-Upgrade Resolutions</span><button class="iep-help-btn" type="button" data-anchor="auto-upgrade" title="Visits each image link in the background to find higher resolution photos.">&#63;</button></label><label class="iep-toggle-row"><input id="iepQuickLazyLoad" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)</span><button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></label><label class="iep-toggle-row"><input id="iepQuickSiteControls" type="checkbox"><span>Disable website image controls</span><button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></label><label class="iep-toggle-row"><input id="iepQuickFastGrab" type="checkbox"><span>Enable Fast Grab</span><button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Shows a quick-download button over images when you hover over them.">&#63;</button></label></div><div style="display: flex; justify-content: center; margin-top: 16px; border-top: 1px solid var(--iep-border-subtle); padding-top: 12px;"><button id="iepBtnOpenGuide" class="iep-button iep-button-secondary" type="button" style="padding: 6px 14px; font-size: 12px; display: flex; gap: 6px; align-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>Open Guide</button></div></section>
@@ -1994,6 +2019,14 @@
                 <button id="iepDeleteProfileBtn" title="Delete Profile" style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px;">Delete</button>
               </div>
               <button id="settings-close-x" class="iep-settings-close-x" type="button" aria-label="Close settings">&times;</button>
+
+             <div style="display: flex; justify-content: center; margin-top: -20px; margin-bottom: -4px; position: relative; z-index: 10;">
+                <a href="https://github.com/dfatrickz/Image-Extractor-Pro/issues" target="_blank" class="iep-github-link" style="font-size: 14px; color: var(--iep-text-muted); text-decoration: none; display: flex; align-items: center; gap: 0px; transition: color 0.2s;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5c.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34c-.46-1.16-1.11-1.47-1.11-1.47c-.91-.62.07-.6.07-.6c1 .07 1.53 1.03 1.53 1.03c.87 1.52 2.34 1.07 2.91.83c.09-.65.35-1.09.63-1.34c-2.22-.25-4.55-1.11-4.55-4.92c0-1.11.38-2 1.03-2.71c-.1-.25-.45-1.29.1-2.64c0 0 .84-.27 2.75 1.02c.79-.22 1.65-.33 2.5-.33c.85 0 1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02c.55 1.35.2 2.39.1 2.64c.65.71 1.03 1.6 1.03 2.71c0 3.82-2.34 4.66-4.57 4.91c.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2Z"></path></svg>
+                  Support / Request Features
+                </a>
+              </div>
+
               <div class="iep-settings-grid settings-horizontal-wrapper">
                 <section class="iep-settings-panel">
                   <h3>Download Preferences</h3>
@@ -3219,12 +3252,18 @@ async function registerCandidates(imageMap, candidates, context) {
 
     // YouTube: Force maxresdefault
     if (url.includes("i.ytimg.com/vi/")) {
-      // The leading slash (\/) prevents infinite loops on already-upgraded maxresdefault URLs
       let ytUrl = url.replace(/\/(hqdefault|mqdefault|sddefault|default|hq720|hq1080|0|1|2|3)\.jpg/i, "/maxresdefault.jpg");
-
-      // Strip query parameters (like ?sqp=). They are cryptographically signed
-      // to the original small thumbnail and will break the maxresdefault fetch.
       return ytUrl.split("?")[0];
+    }
+
+    // imgsrc.ru: Upgrade thumbnails (e.g., t.imgsrc.ru) to big images (b.imgsrc.ru)
+    if (url.includes(".imgsrc.ru/")) {
+      return url.replace(/(:\/\/)[a-z0-9]+(\.imgsrc\.ru\/)/i, "$1b$2");
+    }
+
+    // Unsplash: Strip dynamic Imgix processing parameters to get the raw original file
+    if (url.includes("unsplash.com/")) {
+      return url.split("?")[0];
     }
 
     return url;
@@ -3321,8 +3360,9 @@ async function registerCandidates(imageMap, candidates, context) {
   }
 
   function addCandidate(target, url, sourceType, sourceRank) {
-    if (url) {
-      target.push({ url, sourceType, sourceRank });
+    const resolvedUrl = resolveAbsoluteUrl(url);
+    if (resolvedUrl) {
+      target.push({ url: resolvedUrl, sourceType, sourceRank });
     }
   }
 
