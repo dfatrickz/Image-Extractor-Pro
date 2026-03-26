@@ -170,7 +170,7 @@ const state = {
     hideDeleteWarning: false,
     downloadMode: "zip",
     stickyToolbar: true,
-    windowScale: "big",
+    windowScale: "medium",
     themeStyle: "standard",
     galleryPagination: "unlimited"
   },
@@ -2650,7 +2650,7 @@ async function loadGallerySettings() {
     downloadMode: "zip",
     stickyToolbar: true,
     themeStyle: "Rich",
-    windowScale: "Big",
+    windowScale: "Medium",
     galleryPagination: "Unlimited"
   };
 
