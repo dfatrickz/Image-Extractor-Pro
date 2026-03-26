@@ -34,7 +34,8 @@
     "data-download",
     "data-media",
     "data-pin-media",
-    "data-src-retina"
+    "data-src-retina",
+    "poster"
   ];
   const SRCSET_ATTRIBUTES = [
     "srcset",
@@ -207,7 +208,7 @@
         profileData: this.createDefaultProfileData(initialFilters),
         fabPosition: {
           x: Math.max(window.innerWidth - 88, 16),
-          y: 96
+          y: 24
         },
         panelPosition: null
       };
@@ -258,6 +259,7 @@
         individualDownloadWarningThreshold: 30,
         theme: "system",
         ignoredSelectors: "",
+        blockedDomains: "adzerk.net\nad.doubleclick.net\ngoogleads.g.doubleclick.net\ntpc.googlesyndication.com\namazon-adsystem.com",
         preferLinkedOriginals: true,
         showFab: false
       };
@@ -286,6 +288,7 @@
           ? String(filters.galleryPagination).toLowerCase()
           : defaultFilters.galleryPagination,
         autoUpgradeResolutions: typeof filters.autoUpgradeResolutions === "boolean" ? filters.autoUpgradeResolutions : defaultFilters.autoUpgradeResolutions,
+        blockedDomains: typeof filters.blockedDomains === "string" ? filters.blockedDomains : defaultFilters.blockedDomains,
         showFab: typeof filters.showFab === "boolean" ? filters.showFab : defaultFilters.showFab,
         startMinimized: typeof filters.startMinimized === "boolean" ? filters.startMinimized : defaultFilters.startMinimized
       };
@@ -534,6 +537,7 @@
         quickLazyLoadToggle: this.shadowRoot.getElementById("iepQuickLazyLoad"),
         quickSiteControlsToggle: this.shadowRoot.getElementById("iepQuickSiteControls"),
         quickFastGrabToggle: this.shadowRoot.getElementById("iepQuickFastGrab"),
+        quickShowFabToggle: this.shadowRoot.getElementById("iepQuickShowFab"),
         lazyLoadBypassToggle: this.shadowRoot.getElementById("iepLazyLoadBypass"),
         autoCheckDuplicatesToggle: this.shadowRoot.getElementById("iepAutoCheckDuplicates"),
         stickyToolbarToggle: this.shadowRoot.getElementById("iepStickyToolbar"),
@@ -551,6 +555,7 @@
         formatOptions: this.shadowRoot.getElementById("iepFormatOptions"),
         advancedFormatOptions: this.shadowRoot.getElementById("iepAdvancedFormatOptions"),
         ignoredSelectorsInput: this.shadowRoot.getElementById("iepIgnoredSelectors"),
+        blockedDomainsInput: this.shadowRoot.getElementById("iepBlockedDomains"),
         preferLinkedOriginalsCheckbox: this.shadowRoot.getElementById("iepPreferLinkedOriginals"),
         cancelButton: this.shadowRoot.getElementById("iepCancelButton"),
         reviewButton: this.shadowRoot.getElementById("iepReviewButton"),
@@ -575,7 +580,7 @@
           return;
         }
 
-        void this.openPanel();
+        this.toggle();
       });
 
       // --- SMART HORIZONTAL CAROUSEL SCROLL ---
@@ -774,6 +779,11 @@
         this.updateFiltersFromInputs();
       });
 
+      this.elements.quickShowFabToggle?.addEventListener("change", (event) => {
+        if (this.elements.showFabToggle) this.elements.showFabToggle.checked = event.target.checked;
+        this.updateFiltersFromInputs();
+      });
+
       this.elements.lazyLoadBypassToggle.addEventListener("change", () => {
         this.updateFiltersFromInputs();
       });
@@ -798,7 +808,8 @@
         this.updateFiltersFromInputs();
       });
 
-      this.elements.showFabToggle.addEventListener("change", () => {
+      this.elements.showFabToggle.addEventListener("change", (event) => {
+        if (this.elements.quickShowFabToggle) this.elements.quickShowFabToggle.checked = event.target.checked;
         this.updateFiltersFromInputs();
       });
 
@@ -865,6 +876,10 @@
       });
 
       this.elements.ignoredSelectorsInput.addEventListener("change", () => {
+        this.updateFiltersFromInputs({ rescan: true });
+      });
+
+      this.elements.blockedDomainsInput?.addEventListener("change", () => {
         this.updateFiltersFromInputs({ rescan: true });
       });
 
@@ -1064,6 +1079,7 @@
       if (this.elements.quickLazyLoadToggle) this.elements.quickLazyLoadToggle.checked = Boolean(this.state.filters.lazyLoadBypass);
       if (this.elements.quickSiteControlsToggle) this.elements.quickSiteControlsToggle.checked = Boolean(this.state.filters.disableSiteControls);
       if (this.elements.quickFastGrabToggle) this.elements.quickFastGrabToggle.checked = Boolean(this.state.filters.hoverDownloadEnabled);
+      if (this.elements.quickShowFabToggle) this.elements.quickShowFabToggle.checked = Boolean(this.state.showFab);
       this.elements.lazyLoadBypassToggle.checked = Boolean(this.state.filters.lazyLoadBypass);
       this.elements.autoCheckDuplicatesToggle.checked = Boolean(this.state.filters.autoCheckDuplicates);
       this.elements.stickyToolbarToggle.checked = Boolean(this.state.filters.stickyToolbar);
@@ -1074,6 +1090,10 @@
       this.elements.rateLimitInput.value = String(this.state.filters.rateLimitMs);
       this.elements.individualWarningThresholdInput.value = String(this.state.filters.individualDownloadWarningThreshold);
       this.elements.ignoredSelectorsInput.value = this.state.filters.ignoredSelectors || "";
+      if (this.elements.blockedDomainsInput) {
+        this.elements.blockedDomainsInput.value = this.state.filters.blockedDomains || "";
+        this.elements.blockedDomainsInput.disabled = this.state.busy;
+      }
       this.elements.preferLinkedOriginalsCheckbox.checked = Boolean(this.state.filters.preferLinkedOriginals);
       this.elements.statusBanner.dataset.tone = this.state.statusTone;
       this.elements.statusMessage.textContent = this.state.statusMessage;
@@ -1103,6 +1123,7 @@
       if (this.elements.quickLazyLoadToggle) this.elements.quickLazyLoadToggle.disabled = this.state.busy;
       if (this.elements.quickSiteControlsToggle) this.elements.quickSiteControlsToggle.disabled = this.state.busy;
       if (this.elements.quickFastGrabToggle) this.elements.quickFastGrabToggle.disabled = this.state.busy;
+      if (this.elements.quickShowFabToggle) this.elements.quickShowFabToggle.disabled = this.state.busy;
       this.elements.lazyLoadBypassToggle.disabled = this.state.busy;
       this.elements.autoCheckDuplicatesToggle.disabled = this.state.busy;
       this.elements.stickyToolbarToggle.disabled = this.state.busy;
@@ -1251,6 +1272,7 @@
       this.state.filters.rateLimitMs = Math.max(0, Number.parseInt(this.elements.rateLimitInput.value || "0", 10) || 0);
       this.state.filters.individualDownloadWarningThreshold = Math.max(0, Number.parseInt(this.elements.individualWarningThresholdInput.value || "30", 10) || 0);
       this.state.filters.ignoredSelectors = String(this.elements.ignoredSelectorsInput.value || "").trim();
+      this.state.filters.blockedDomains = String(this.elements.blockedDomainsInput?.value || "").trim();
       this.state.filters.preferLinkedOriginals = Boolean(this.elements.preferLinkedOriginalsCheckbox.checked);
       this.state.filters.formats = readFormatStateFromUi(this.shadowRoot, this.createDefaultFormatState());
       this.state.filters.showFab = this.state.showFab;
@@ -1707,9 +1729,21 @@
       }
 
       let hoverUrl = imageInfo.url;
+      const blockedList = this.state.filters.blockedDomains
+        ? parseIgnoredRules(this.state.filters.blockedDomains)
+        : [];
+      if (blockedList.length > 0 && blockedList.some((domain) => hoverUrl.includes(domain))) {
+        this.hideSurferHoverButton();
+        return;
+      }
       const targetImg = imageInfo.targetImg;
       if (!hoverUrl || (hoverUrl.startsWith("data:image") && !window.location.hostname.includes("google."))) {
         hoverUrl = await getBestImageUrl(targetImg);
+      }
+
+      if (blockedList.length > 0 && blockedList.some((domain) => hoverUrl.includes(domain))) {
+          this.hideSurferHoverButton();
+          return;
       }
 
       if (requestId !== this.surferHoverRequestId) {
@@ -1848,7 +1882,7 @@
       this.elements.fab.style.top = `${clampedFabY}px`;
 
       const fallbackPanelLeft = clamp(clampedFabX - (panelWidth - fabWidth), 12, Math.max(12, viewportWidth - panelWidth - 12));
-      const fallbackPanelTop = clamp(clampedFabY - 16, 12, Math.max(12, viewportHeight - panelHeight - 12));
+      const fallbackPanelTop = clamp(clampedFabY + fabHeight + 16, 12, Math.max(12, viewportHeight - panelHeight - 12));
       const nextPanelX = clamp(this.state.panelPosition?.x ?? fallbackPanelLeft, 12, Math.max(12, viewportWidth - panelWidth - 12));
       const nextPanelY = clamp(this.state.panelPosition?.y ?? fallbackPanelTop, 12, Math.max(12, viewportHeight - panelHeight - 12));
       this.state.panelPosition = {
@@ -2089,7 +2123,7 @@
             </header>
             <div class="iep-body">
               <section class="iep-card"><div class="iep-action-grid"><button id="iepExtractAllButton" class="iep-button iep-button-primary" type="button">Extract All from Page</button><button id="iepSelectAreaButton" class="iep-button iep-button-secondary" type="button">Select Area to Extract</button></div><div id="iepPreviewContainer" class="iep-preview-container"><div class="iep-preview-inner"><div class="iep-preview-stack"><div id="iepScanProgressWrapper" style="display: none; padding: 12px; background: var(--iep-bg-secondary, #1e293b); border-radius: 6px; margin-bottom: 10px;"><div style="width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden;"><div id="iepScanProgressBar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.1s ease-out;"></div></div><div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #94a3b8;"><span id="iepScanStatusText">Initializing scan...</span><span id="iepScanPercentText">0%</span></div></div><p id="iepSelectionLabel" class="iep-selection-label">No extraction scope selected yet.</p><p id="iepPreviewCount" class="iep-preview-count">Found 0 images matching your filters.</p><p id="iepPreviewMeta" class="iep-preview-meta">Use one of the extract actions above to preview the result count first.</p><section id="iepStatus" class="iep-status" data-tone="default" aria-live="polite"><p id="iepStatusMessage">Run a page extract or select an area, then review the match count before opening the gallery.</p></section><div class="iep-actions"><button id="iepCancelButton" class="iep-button iep-button-secondary" type="button" hidden>Clear Preview</button><button id="iepReviewButton" class="iep-button iep-button-primary" type="button" hidden>Review &amp; Download</button></div></div></div></div></section>
-              <section class="iep-card"><h2>Quick Settings</h2><div style="display: grid; gap: 10px;"><label class="iep-toggle-row"><input id="iepQuickLazyLoad" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)<button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickSiteControls" type="checkbox"><span>Disable website image controls<button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickFastGrab" type="checkbox"><span>Enable Fast Grab<button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Shows a quick-download button over images when you hover over them.">&#63;</button></span></label></div><div style="display: flex; justify-content: center; margin-top: 16px; border-top: 1px solid var(--iep-border-subtle); padding-top: 12px;"><button id="iepBtnOpenGuide" class="iep-button iep-button-secondary" type="button" style="padding: 6px 14px; font-size: 12px; display: flex; gap: 6px; align-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>Open Guide</button></div></section>
+              <section class="iep-card"><h2>Quick Settings</h2><div style="display: grid; gap: 10px;"><label class="iep-toggle-row"><input id="iepQuickLazyLoad" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)<button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickSiteControls" type="checkbox"><span>Disable website image controls<button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickFastGrab" type="checkbox"><span>Enable Fast Grab<button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Shows a quick-download button over images when you hover over them.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickShowFab" type="checkbox"><span>Show Floating Icon on Pages<button class="iep-help-btn" type="button" data-anchor="show-fab" title="Show or hide the floating launch button.">&#63;</button></span></label></div><div style="display: flex; justify-content: center; margin-top: 16px; border-top: 1px solid var(--iep-border-subtle); padding-top: 12px;"><button id="iepBtnOpenGuide" class="iep-button iep-button-secondary" type="button" style="padding: 6px 14px; font-size: 12px; display: flex; gap: 6px; align-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>Open Guide</button></div></section>
               <section class="iep-card"><h2>Filters</h2><p>Image search filters for size &amp; formats</p><div class="iep-filter-grid"><label class="iep-field"><span>Minimum Width (px)</span><input id="iepMinWidth" type="number" min="0" step="10" value="150"></label><label class="iep-field"><span>Minimum Height (px)</span><input id="iepMinHeight" type="number" min="0" step="10" value="150"></label></div><div id="iepFormatOptions" class="iep-format-grid" aria-label="Format filters"></div><div class="iep-inline-group"><span class="iep-field-label">Extra supported formats</span><div id="iepAdvancedFormatOptions" class="iep-format-grid iep-format-grid-compact" aria-label="Advanced format filters"></div></div></section>
               <details class="iep-details"><summary>Advanced Settings</summary><div class="iep-details-body"><label class="iep-field iep-field-full"><span>Ignore selectors or class fragments</span><input id="iepIgnoredSelectors" type="text" placeholder=".avatar, .logo, sponsor-card"></label><label class="iep-toggle-row"><input id="iepPreferLinkedOriginals" type="checkbox" checked><span>Prefer linked original image URLs when available</span></label></div></details>
             </div>
@@ -2222,6 +2256,11 @@
                     <button id="iepBtnDeleteData" class="iep-button" type="button" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">Delete My Data</button>
                   </div>
                   <div id="iepDataStatus" style="text-align: center; font-size: 13px; margin-top: 14px; height: 16px; font-weight: 500; transition: opacity 0.3s; opacity: 0;"></div>
+                  <div class="iep-settings-stack" style="margin-top: 8px; border-top: 1px solid var(--iep-border); padding-top: 16px;">
+                    <h3 style="text-align: center; margin: 0 0 8px;">Blocked Domains</h3>
+                    <p style="text-align: center; margin-bottom: 8px; color: var(--iep-text-soft);">Images from these domains will be completely ignored.</p>
+                    <textarea id="iepBlockedDomains" style="width: calc(100% - 16px); min-height: 90px; resize: vertical; font-family: monospace; font-size: 11px; padding: 10px; background: var(--input-bg, var(--iep-surface-strong)); color: var(--input-text, var(--iep-text-main)); border: 1px solid var(--input-border, var(--iep-border-strong)); border-radius: 8px;" placeholder="adzerk.net&#10;ad.doubleclick.net"></textarea>
+                  </div>
                 </section>
               </div>
             </section>
@@ -2499,6 +2538,7 @@
       context,
       metrics,
       sourceTypeFallback: "rendered",
+      blockedDomainsList: parseIgnoredRules(filters.blockedDomains),
       ignoredRules,
       filenameHint: buildFilenameHint(altText, image)
     });
@@ -2540,6 +2580,7 @@
       context,
       metrics,
       sourceTypeFallback: "source",
+      blockedDomainsList: parseIgnoredRules(filters.blockedDomains),
       ignoredRules,
       filenameHint: buildFilenameHint(altText, previewImage || source)
     });
@@ -2571,6 +2612,7 @@
       context,
       metrics,
       sourceTypeFallback: "background",
+      blockedDomainsList: parseIgnoredRules(filters.blockedDomains),
       ignoredRules,
       filenameHint: buildFilenameHint("", element)
     });
@@ -2592,6 +2634,10 @@ async function registerCandidates(imageMap, candidates, context) {
       const finalUrl = resolveAbsoluteUrl(getFlickrHighRes(normalizedUrl));
       if (!finalUrl) {
         continue;
+      }
+
+      if (context.blockedDomainsList && context.blockedDomainsList.length > 0) {
+        if (context.blockedDomainsList.some((domain) => finalUrl.includes(domain))) continue;
       }
 
       // REMOVED: The hidden hasBlockedKeyword check that was destroying valid images
@@ -2679,7 +2725,7 @@ async function registerCandidates(imageMap, candidates, context) {
     }
 
     const imageUrl = String(element.currentSrc || element.src || "");
-    if (/spaceball|transparent|data:image\/gif/i.test(imageUrl)) {
+    if (/spaceball|transparent/i.test(imageUrl)) {
       return false;
     }
 
@@ -3858,6 +3904,8 @@ async function registerCandidates(imageMap, candidates, context) {
     if (!url) {
       return "";
     }
+
+    if (String(url).includes("unsplash.com/")) return "jpg";
 
     if (url.startsWith("data:image/")) {
       const section = url.slice("data:image/".length).split(/[;,]/, 1)[0].toLowerCase();

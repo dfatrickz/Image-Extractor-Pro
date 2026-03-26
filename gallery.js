@@ -2344,7 +2344,7 @@ function updateStickyStats(selectedCount) {
   }
 
   const totalImages = document.querySelectorAll(".image-card").length;
-  stickyStatsElement.innerHTML = `<span style="color: var(--text-primary, #f8fafc);">${selectedCount}</span> selected &nbsp;|&nbsp; ${totalImages} total`;
+  stickyStatsElement.innerHTML = `<span style="color: var(--text-main, #f8fafc); font-weight: 700;">${selectedCount}</span> selected &nbsp;|&nbsp; ${totalImages} total`;
 }
 
 function setControlsDisabled(disabled, noVisibleImages = false, noSelectedImages = false) {
@@ -3207,8 +3207,8 @@ window.openLightbox = function openLightbox(startImageUrl) {
   }
 
   overlay.style.display = "flex";
-  renderLightboxImage();
   renderThumbnails();
+  renderLightboxImage();
   document.body.style.overflow = "hidden";
 };
 
