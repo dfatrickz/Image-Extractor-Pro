@@ -1570,7 +1570,7 @@
           theme: this.state.filters.theme,
           rateLimitMs: this.state.filters.rateLimitMs,
           individualDownloadWarningThreshold: this.state.filters.individualDownloadWarningThreshold,
-          flickrApiKey: location.hostname.includes("flickr.com") ? extractFlickrApiKey(document.documentElement.innerHTML) : "",
+          
           images: this.state.previewImages.map((image) => ({
             ...image,
             selected: false
@@ -2899,11 +2899,6 @@ async function registerCandidates(imageMap, candidates, context) {
     cleanUrl = cleanUrl.replace(/^http:/i, "https:");
 
     return cleanUrl;
-  }
-
-  function extractFlickrApiKey(markup) {
-    const match = String(markup || "").match(/(?:\"api_key\"|\"site_key\")\s*:\s*\"([a-f0-9]+)\"/i);
-    return match ? match[1] : "";
   }
 
   window.getTrueFlickrMax = async function(thumbUrl) {

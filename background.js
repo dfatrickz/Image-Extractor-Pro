@@ -164,7 +164,6 @@ async function openGalleryFromContent(tab, message) {
       rateLimitMs: Math.max(0, Number.parseInt(message.rateLimitMs || "0", 10) || 0),
       individualDownloadWarningThreshold: Math.max(0, Number.parseInt(message.individualDownloadWarningThreshold || "30", 10) || 0),
       flickrNetworkCache: Array.isArray(message.flickrNetworkCache) ? message.flickrNetworkCache : [],
-      flickrApiKey: message.flickrApiKey || "",
       extractedAt: new Date().toISOString(),
       images
     }, tab?.incognito);

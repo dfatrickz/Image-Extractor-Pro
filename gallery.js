@@ -234,7 +234,6 @@ const imageCacheManager = {
 };
 
 window.flickrNetworkCache = window.flickrNetworkCache || [];
-window.flickrApiKey = window.flickrApiKey || "";
 
 function isFlickrUrl(url) {
   return String(url || "").includes("flickr.com");
@@ -783,7 +782,6 @@ async function initialize() {
     state.downloadPreferences = normalizeDownloadPreferences(response.session);
     applyTheme(state.downloadPreferences.theme);
     window.flickrNetworkCache = Array.isArray(response.session.flickrNetworkCache) ? response.session.flickrNetworkCache : [];
-    window.flickrApiKey = response.session.flickrApiKey || "";
     const initialDownloadMode = state.downloadPreferences.downloadMode || state.gallerySettings.downloadMode;
     state.downloadPreferences.downloadMode = initialDownloadMode;
     if (galleryDownloadModeSelect) {
