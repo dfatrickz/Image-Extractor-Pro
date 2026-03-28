@@ -51,6 +51,8 @@ api.runtime.onMessage.addListener((message, sender) => {
       return openGalleryFromContent(sender.tab, message);
     case "IEP_GET_SESSION":
       return getExtractionSession(message.sessionId);
+    case "IEP_UPDATE_SESSION":
+      return updateExtractionSession(message.sessionId, message.patch);
     case "IEP_FETCH_BINARY_PROBE":
       return fetchBinaryProbe(message.url);
     case "IEP_QUICK_DOWNLOAD":
@@ -360,6 +362,85 @@ async function getExtractionSession(sessionId) {
     return {
       ok: false,
       error: error.message || "Could not load the extraction session."
+    };
+  }
+}
+
+function applySessionPatch(session, patch) {
+  if (!patch || typeof patch !== "object") {
+    return session;
+  }
+
+  const nextSession = {
+    ...session
+  };
+
+  if (Array.isArray(patch.images)) {
+    nextSession.images = patch.images;
+  } else if (Array.isArray(patch.imageUpdates) && Array.isArray(nextSession.images)) {
+    const updatesByClientId = new Map();
+    patch.imageUpdates.forEach((update) => {
+      if (update?.clientId) {
+        updatesByClientId.set(update.clientId, update);
+      }
+    });
+
+    if (updatesByClientId.size > 0) {
+      nextSession.images = nextSession.images.map((image) => {
+        const update = image?.clientId ? updatesByClientId.get(image.clientId) : null;
+        return update ? { ...image, ...update } : image;
+      });
+    }
+  }
+
+  if (patch.resolveProgress && typeof patch.resolveProgress === "object") {
+    nextSession.resolveProgress = patch.resolveProgress;
+  }
+
+  return nextSession;
+}
+
+async function updateExtractionSession(sessionId, patch) {
+  try {
+    if (!sessionId) {
+      throw new Error("No extraction session is available yet.");
+    }
+
+    if (incognitoSessions.has(sessionId)) {
+      const session = incognitoSessions.get(sessionId);
+      if (!session) {
+        throw new Error("The extraction session could not be found.");
+      }
+
+      const nextSession = applySessionPatch(session, patch);
+      incognitoSessions.set(sessionId, nextSession);
+      return {
+        ok: true,
+        session: nextSession
+      };
+    }
+
+    const sessionKey = getSessionKey(sessionId);
+    const storageState = await api.storage.local.get(sessionKey);
+    const session = storageState[sessionKey];
+
+    if (!session) {
+      throw new Error("The extraction session could not be found.");
+    }
+
+    const nextSession = applySessionPatch(session, patch);
+    await api.storage.local.set({
+      [sessionKey]: nextSession
+    });
+
+    return {
+      ok: true,
+      session: nextSession
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error.message || "Could not update the extraction session."
     };
   }
 }

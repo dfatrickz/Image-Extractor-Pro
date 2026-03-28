@@ -176,6 +176,7 @@ const state = {
   },
   isResolvingFlickrQueue: false,
   resolveQueuePromise: null,
+  resolveProgress: createDefaultResolveProgress(),
   manualUpgradeCancellable: false,
   hasDuplicateCheckRun: false,
   pendingDelete: null,
@@ -232,6 +233,136 @@ const imageCacheManager = {
     this.get(url).catch(() => {});
   }
 };
+
+function createDefaultResolveProgress() {
+  return {
+    status: "idle",
+    completed: 0,
+    total: 0,
+    upgradedCount: 0,
+    failedClientIds: [],
+    updatedAt: null
+  };
+}
+
+function normalizeResolveProgress(progress) {
+  const fallback = createDefaultResolveProgress();
+  if (!progress || typeof progress !== "object") {
+    return fallback;
+  }
+
+  const status = typeof progress.status === "string" ? progress.status : fallback.status;
+  const completed = Math.max(0, Number.parseInt(progress.completed, 10) || 0);
+  const total = Math.max(0, Number.parseInt(progress.total, 10) || 0);
+  const upgradedCount = Math.max(0, Number.parseInt(progress.upgradedCount, 10) || 0);
+  const failedClientIds = Array.isArray(progress.failedClientIds)
+    ? [...new Set(progress.failedClientIds.filter((clientId) => typeof clientId === "string" && clientId))]
+    : [];
+
+  return {
+    status: ["idle", "running", "completed", "failed", "cancelled"].includes(status)
+      ? status
+      : fallback.status,
+    completed: total > 0 ? Math.min(completed, total) : completed,
+    total,
+    upgradedCount,
+    failedClientIds,
+    updatedAt: typeof progress.updatedAt === "string" ? progress.updatedAt : null
+  };
+}
+
+function cloneResolveProgress(progress = state.resolveProgress) {
+  return {
+    ...progress,
+    failedClientIds: [...(progress?.failedClientIds || [])]
+  };
+}
+
+function syncLegacyResolveState() {
+  window.flickrUpgradedCount = state.resolveProgress.upgradedCount;
+  window.flickrFailedItems = [...state.resolveProgress.failedClientIds];
+  window.iepCancelUpgrade = state.resolveProgress.status === "cancelled";
+}
+
+function setResolveProgress(progress) {
+  state.resolveProgress = normalizeResolveProgress(progress);
+  syncLegacyResolveState();
+  if (state.session) {
+    state.session.resolveProgress = cloneResolveProgress(state.resolveProgress);
+  }
+  return state.resolveProgress;
+}
+
+function updateResolveProgressState(patch) {
+  return setResolveProgress({
+    ...state.resolveProgress,
+    ...patch,
+    failedClientIds: Array.isArray(patch?.failedClientIds)
+      ? [...new Set(patch.failedClientIds.filter((clientId) => typeof clientId === "string" && clientId))]
+      : state.resolveProgress.failedClientIds,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+function getResolveFailureCount(progress = state.resolveProgress) {
+  return Array.isArray(progress?.failedClientIds) ? progress.failedClientIds.length : 0;
+}
+
+function getResolveProgressLabel(progress = state.resolveProgress) {
+  return `Upgrading Resolutions: ${progress.completed}/${progress.total}`;
+}
+
+function applyImageUpdatesToCollection(images, updates) {
+  if (!Array.isArray(images) || !Array.isArray(updates) || !updates.length) {
+    return Array.isArray(images) ? images : [];
+  }
+
+  const updatesByClientId = new Map();
+  updates.forEach((update) => {
+    if (update?.clientId) {
+      updatesByClientId.set(update.clientId, update);
+    }
+  });
+
+  if (!updatesByClientId.size) {
+    return images;
+  }
+
+  return images.map((image) => {
+    const update = image?.clientId ? updatesByClientId.get(image.clientId) : null;
+    return update ? { ...image, ...update } : image;
+  });
+}
+
+async function persistExtractionSessionPatch(patch) {
+  if (!state.sessionId || !patch || typeof patch !== "object") {
+    return;
+  }
+
+  try {
+    await api.runtime.sendMessage({
+      type: "IEP_UPDATE_SESSION",
+      sessionId: state.sessionId,
+      patch
+    });
+
+    if (!state.session) {
+      return;
+    }
+
+    if (Array.isArray(patch.images)) {
+      state.session.images = patch.images.map((image) => ({ ...image }));
+    } else if (Array.isArray(patch.imageUpdates) && Array.isArray(state.session.images)) {
+      state.session.images = applyImageUpdatesToCollection(state.session.images, patch.imageUpdates);
+    }
+
+    if (patch.resolveProgress && typeof patch.resolveProgress === "object") {
+      state.session.resolveProgress = cloneResolveProgress(patch.resolveProgress);
+    }
+  } catch (_error) {
+    // Ignore background/session persistence failures and keep the in-memory gallery responsive.
+  }
+}
 
 window.flickrNetworkCache = window.flickrNetworkCache || [];
 
@@ -307,11 +438,6 @@ function buildResolveRetryMarkup() {
 function startRetryResolveQueue() {
   window.iepCancelUpgrade = false;
   state.manualUpgradeCancellable = true;
-  renderResolveProgressState("Upgrading Resolutions: 0/0", {
-    showSpinner: true,
-    showCancel: true,
-    color: "#f59e0b"
-  });
   state.resolveQueuePromise = processFlickrQueue([], true, { cancellable: true });
   void state.resolveQueuePromise;
 }
@@ -342,6 +468,12 @@ function renderResolveProgressState(text, options = {}) {
   if (cancelButton) {
     cancelButton.addEventListener("click", () => {
       window.iepCancelUpgrade = true;
+      updateResolveProgressState({
+        status: "cancelled"
+      });
+      void persistExtractionSessionPatch({
+        resolveProgress: cloneResolveProgress()
+      });
       renderResolveProgressState("Upgrade Cancelled", {
         color: "#ef4444",
         showSpinner: false,
@@ -365,10 +497,19 @@ function updateResolveProgressText(text) {
   }
 }
 
-function renderResolveManualAction() {
+function renderResolveManualAction(options = {}) {
+  const {
+    buttonLabel = "Upgrade Resolutions",
+    statusText = "",
+    statusColor = "inherit",
+    fontWeight = statusText ? 600 : 500
+  } = options;
   const guideUrl = `${api.runtime.getURL("guide.html")}#auto-upgrade`;
+  const statusMarkup = statusText
+    ? `<span id="iep-resolve-text" style="font-size: 12px;${statusColor ? ` color: ${statusColor};` : ""}${fontWeight ? ` font-weight: ${fontWeight};` : ""}">${statusText}</span>`
+    : "";
   const resolveContainer = renderResolveContainer(
-    `<button id="btnManualUpgrade" class="iep-btn-amber-small" type="button">Upgrade Resolutions</button><a href="${guideUrl}" target="_blank" rel="noreferrer noopener" class="iep-help-btn-gallery" title="Visits each image link in the background to find higher resolution photos.">&#63;</a>`
+    `${statusMarkup}<button id="btnManualUpgrade" class="iep-btn-amber-small" type="button">${buttonLabel}</button><a href="${guideUrl}" target="_blank" rel="noreferrer noopener" class="iep-help-btn-gallery" title="Visits each image link in the background to find higher resolution photos.">&#63;</a>`
   );
 
   if (!resolveContainer) {
@@ -388,13 +529,23 @@ function syncResolveProgressContainer() {
   const currentUrl = String(state.session?.sourceUrl || "");
   const isFlickr = currentUrl.includes("flickr.com");
   const resolveContainer = getResolveContainer();
+  const resolveProgress = normalizeResolveProgress(state.resolveProgress);
+  const failedCount = getResolveFailureCount(resolveProgress);
+  const hasRecordedProgress = resolveProgress.status !== "idle"
+    || resolveProgress.upgradedCount > 0
+    || failedCount > 0;
 
   if (!resolveContainer) {
     return;
   }
 
   if (state.isResolvingFlickrQueue) {
-    resolveContainer.style.display = "flex";
+    renderResolveProgressState(getResolveProgressLabel(resolveProgress), {
+      color: "#f59e0b",
+      showSpinner: true,
+      showCancel: state.manualUpgradeCancellable,
+      fontWeight: 600
+    });
     return;
   }
 
@@ -405,6 +556,62 @@ function syncResolveProgressContainer() {
 
   const pendingCards = getDisplayedFlickrCards({ onlyPending: true });
   const hasPending = pendingCards.length > 0;
+
+  if (resolveProgress.status === "running" && resolveProgress.total > 0) {
+    if (!window.iepSettings?.autoUpgradeResolutions) {
+      renderResolveManualAction({
+        buttonLabel: "Resume Upgrading",
+        statusText: getResolveProgressLabel(resolveProgress),
+        statusColor: "#f59e0b",
+        fontWeight: 600
+      });
+    } else {
+      renderResolveProgressState(getResolveProgressLabel(resolveProgress), {
+        color: "#f59e0b",
+        showSpinner: false,
+        fontWeight: 600
+      });
+    }
+    return;
+  }
+
+  if (resolveProgress.status === "cancelled") {
+    if (hasPending && !window.iepSettings?.autoUpgradeResolutions) {
+      renderResolveManualAction({
+        buttonLabel: "Resume Upgrading",
+        statusText: "Upgrade Cancelled",
+        statusColor: "#ef4444",
+        fontWeight: 600
+      });
+    } else {
+      renderResolveProgressState("Upgrade Cancelled", {
+        color: "#ef4444",
+        showSpinner: false,
+        fontWeight: 600
+      });
+    }
+    return;
+  }
+
+  if (failedCount > 0) {
+    renderResolveProgressState(`Images upgraded ${resolveProgress.upgradedCount} | Failed ${failedCount}`, {
+      color: "#f59e0b",
+      showSpinner: false,
+      showRetry: true,
+      fontWeight: 600
+    });
+    return;
+  }
+
+  if (resolveProgress.upgradedCount > 0 && hasPending && !window.iepSettings?.autoUpgradeResolutions) {
+    renderResolveManualAction({
+      buttonLabel: "Continue Upgrading",
+      statusText: `Images upgraded ${resolveProgress.upgradedCount} | Failed 0`,
+      statusColor: "#10b981",
+      fontWeight: 600
+    });
+    return;
+  }
 
   if (hasPending) {
     if (!window.iepSettings?.autoUpgradeResolutions) {
@@ -419,27 +626,12 @@ function syncResolveProgressContainer() {
     return;
   }
 
-  if (window.flickrUpgradedCount > 0 || window.flickrFailedItems.length > 0 || window.iepCancelUpgrade) {
-    if (window.iepCancelUpgrade) {
-      renderResolveProgressState("Upgrade Cancelled", {
-        color: "#ef4444",
-        showSpinner: false,
-        fontWeight: 600
-      });
-    } else if (window.flickrFailedItems.length > 0) {
-      renderResolveProgressState(`Images upgraded ${window.flickrUpgradedCount} | Failed ${window.flickrFailedItems.length}`, {
-        color: "#f59e0b",
-        showSpinner: false,
-        showRetry: true,
-        fontWeight: 600
-      });
-    } else {
-      renderResolveProgressState(`Images upgraded ${window.flickrUpgradedCount} | Failed 0`, {
-        color: "#10b981",
-        showSpinner: false,
-        fontWeight: 600
-      });
-    }
+  if (hasRecordedProgress && resolveProgress.upgradedCount > 0) {
+    renderResolveProgressState(`Images upgraded ${resolveProgress.upgradedCount} | Failed 0`, {
+      color: "#10b981",
+      showSpinner: false,
+      fontWeight: 600
+    });
     return;
   }
 
@@ -465,12 +657,7 @@ async function resolveImageForDownload(image) {
     return image;
   }
 
-  if (!shouldAutoUpgradeResolutions() || !isFlickrUrl(image.url)) {
-    return image;
-  }
-
-  const resolvedData = await window.getTrueFlickrMax(image.url);
-  return mergeResolvedImageData(image, resolvedData);
+  return { ...image };
 }
 
 window.getTrueFlickrMax = async function(thumbUrl) {
@@ -772,6 +959,7 @@ async function initialize() {
     }
 
     state.session = response.session;
+    setResolveProgress(response.session.resolveProgress);
     if (typeof response.session.autoUpgradeResolutions === "boolean") {
       state.gallerySettings.autoUpgradeResolutions = response.session.autoUpgradeResolutions;
       window.iepSettings = {
@@ -800,6 +988,7 @@ async function initialize() {
       : [];
     originalOrder = [...state.images];
     state.isResolvingFlickrQueue = false;
+    state.resolveQueuePromise = null;
 
     const preferredFolder = normalizeRelativePath(
       state.downloadPreferences.subfolderName
@@ -812,6 +1001,10 @@ async function initialize() {
     }
 
     updateDownloadControls();
+    await persistExtractionSessionPatch({
+      images: state.images,
+      resolveProgress: cloneResolveProgress()
+    });
 
     if (state.images.length) {
       if (state.gallerySettings.autoCheckDuplicates) {
@@ -837,6 +1030,7 @@ async function initialize() {
     state.duplicateCount = 0;
     state.isResolvingFlickrQueue = false;
     state.resolveQueuePromise = null;
+    setResolveProgress(createDefaultResolveProgress());
     state.downloadPreferences = createDefaultDownloadPreferences();
     applyTheme(state.downloadPreferences.theme);
     render();
@@ -2422,44 +2616,62 @@ function mergeResolvedImageData(image, resolvedData) {
 
 function updateResolvedImageData(clientId, resolvedData) {
   if (!clientId || !resolvedData) {
-    return;
+    return null;
   }
 
+  let updatedImage = null;
   const image = state.images.find((entry) => entry.clientId === clientId);
   if (image) {
     Object.assign(image, mergeResolvedImageData(image, resolvedData));
+    updatedImage = { ...image };
   }
 
   const original = originalOrder.find((entry) => entry.clientId === clientId);
   if (original) {
     Object.assign(original, mergeResolvedImageData(original, resolvedData));
   }
+
+  return updatedImage;
+}
+
+function buildFlickrQueueItems(cards) {
+  return Array.from(cards || [])
+    .map((card) => ({
+      card,
+      clientId: card.dataset.clientId || "",
+      imgEl: card.querySelector(".card-image"),
+      linkEl: card.querySelector(".card-url"),
+      viewBtn: card.querySelector(".card-open-link")
+    }))
+    .filter((item) => {
+      const baseUrl = item.card?.dataset.url || item.imgEl?.currentSrc || item.imgEl?.src || "";
+      return Boolean(item.card && item.imgEl && baseUrl.includes("flickr.com"));
+    });
+}
+
+function getRetryQueueItems() {
+  const failedClientIds = new Set(state.resolveProgress.failedClientIds || []);
+  if (!failedClientIds.size) {
+    return [];
+  }
+
+  return buildFlickrQueueItems(getDisplayedFlickrCards())
+    .filter((item) => failedClientIds.has(item.clientId));
 }
 
 async function processFlickrQueue(imageCards, isRetry = false, options = {}) {
   const cancellable = Boolean(options.cancellable);
   let queue = [];
+  let upgradedCount = isRetry ? state.resolveProgress.upgradedCount : 0;
+  let failedClientIds = [];
   state.isResolvingFlickrQueue = true;
   state.manualUpgradeCancellable = cancellable;
 
   if (isRetry) {
-    queue = [...window.flickrFailedItems];
-    window.flickrFailedItems = [];
+    queue = getRetryQueueItems();
   } else {
-    queue = Array.from(imageCards || [])
-      .map((card) => ({
-        card,
-        clientId: card.dataset.clientId || "",
-        imgEl: card.querySelector(".card-image"),
-        linkEl: card.querySelector(".card-url"),
-        viewBtn: card.querySelector(".card-open-link")
-      }))
-      .filter((item) => {
-        const baseUrl = item.card?.dataset.url || item.imgEl?.currentSrc || item.imgEl?.src || "";
-        return Boolean(item.card && item.imgEl && baseUrl.includes("flickr.com"));
-      });
-    window.flickrUpgradedCount = 0;
-    window.flickrFailedItems = [];
+    queue = buildFlickrQueueItems(imageCards);
+    upgradedCount = 0;
   }
 
   if (!queue.length) {
@@ -2471,11 +2683,21 @@ async function processFlickrQueue(imageCards, isRetry = false, options = {}) {
     return { cancelled: false, completed: 0, total: 0 };
   }
 
-  renderResolveProgressState(`Upgrading Resolutions: 0/${queue.length}`, {
+  updateResolveProgressState({
+    status: "running",
+    completed: 0,
+    total: queue.length,
+    upgradedCount,
+    failedClientIds: []
+  });
+  renderResolveProgressState(getResolveProgressLabel(), {
     color: "#f59e0b",
     showSpinner: true,
     showCancel: cancellable,
     fontWeight: 600
+  });
+  await persistExtractionSessionPatch({
+    resolveProgress: cloneResolveProgress()
   });
 
   let completed = 0;
@@ -2490,6 +2712,8 @@ async function processFlickrQueue(imageCards, isRetry = false, options = {}) {
 
     const batch = queue.slice(index, index + batchSize);
     let neededNetwork = false;
+    const batchImageUpdates = [];
+    const batchFailedClientIds = [];
 
     await Promise.all(batch.map(async (item) => {
       if (cancellable && window.iepCancelUpgrade) {
@@ -2506,8 +2730,11 @@ async function processFlickrQueue(imageCards, isRetry = false, options = {}) {
         }
 
         if (nextUrl !== originalSrc || (maxData?.width && maxData?.height)) {
-          window.flickrUpgradedCount += 1;
-          updateResolvedImageData(item.clientId, maxData);
+          upgradedCount += 1;
+          const updatedImage = updateResolvedImageData(item.clientId, maxData);
+          if (updatedImage) {
+            batchImageUpdates.push(updatedImage);
+          }
           item.card.dataset.url = nextUrl;
           if (maxData?.width && maxData?.height) {
             item.card.dataset.width = String(maxData.width);
@@ -2547,21 +2774,38 @@ async function processFlickrQueue(imageCards, isRetry = false, options = {}) {
               finalResLabel.textContent = `Source ${maxData.width} × ${maxData.height}`;
             }
           }
-        } else if (!(cancellable && window.iepCancelUpgrade)) {
-          window.flickrFailedItems.push(item);
+        } else if (!(cancellable && window.iepCancelUpgrade) && item.clientId) {
+          batchFailedClientIds.push(item.clientId);
         }
       } catch (error) {
         console.error("[IEP Debug] Queue item failed:", error);
-        if (!(cancellable && window.iepCancelUpgrade)) {
-          window.flickrFailedItems.push(item);
+        if (!(cancellable && window.iepCancelUpgrade) && item.clientId) {
+          batchFailedClientIds.push(item.clientId);
         }
       } finally {
         completed += 1;
-        if (!(cancellable && window.iepCancelUpgrade)) {
-          updateResolveProgressText(`Upgrading Resolutions: ${completed}/${queue.length}`);
-        }
       }
     }));
+
+    failedClientIds = [...new Set([...failedClientIds, ...batchFailedClientIds])];
+    if (!(cancellable && window.iepCancelUpgrade)) {
+      updateResolveProgressState({
+        status: "running",
+        completed,
+        total: queue.length,
+        upgradedCount,
+        failedClientIds
+      });
+      updateResolveProgressText(getResolveProgressLabel());
+      await persistExtractionSessionPatch({
+        resolveProgress: cloneResolveProgress(),
+        imageUpdates: batchImageUpdates
+      });
+    } else if (batchImageUpdates.length > 0) {
+      await persistExtractionSessionPatch({
+        imageUpdates: batchImageUpdates
+      });
+    }
 
     if (cancellable && window.iepCancelUpgrade) {
       wasCancelled = true;
@@ -2578,31 +2822,62 @@ async function processFlickrQueue(imageCards, isRetry = false, options = {}) {
   state.manualUpgradeCancellable = false;
   refreshControlState();
   if (wasCancelled) {
+    updateResolveProgressState({
+      status: "cancelled",
+      completed,
+      total: queue.length,
+      upgradedCount,
+      failedClientIds
+    });
     renderResolveProgressState("Upgrade Cancelled", {
       color: "#ef4444",
       showSpinner: false,
       fontWeight: 600
     });
-  } else if (window.flickrFailedItems.length > 0) {
-    renderResolveProgressState(`Images upgraded ${window.flickrUpgradedCount} | Failed ${window.flickrFailedItems.length}`, {
+  } else if (failedClientIds.length > 0) {
+    updateResolveProgressState({
+      status: "failed",
+      completed,
+      total: queue.length,
+      upgradedCount,
+      failedClientIds
+    });
+    renderResolveProgressState(`Images upgraded ${upgradedCount} | Failed ${failedClientIds.length}`, {
       color: "#f59e0b",
       showSpinner: false,
       showRetry: true,
       fontWeight: 600
     });
   } else if (cancellable) {
+    updateResolveProgressState({
+      status: "completed",
+      completed,
+      total: queue.length,
+      upgradedCount,
+      failedClientIds: []
+    });
     renderResolveProgressState("Upgrades Complete", {
       color: "#10b981",
       showSpinner: false,
       fontWeight: 600
     });
   } else {
-    renderResolveProgressState(`Images upgraded ${window.flickrUpgradedCount} | Failed 0`, {
+    updateResolveProgressState({
+      status: "completed",
+      completed,
+      total: queue.length,
+      upgradedCount,
+      failedClientIds: []
+    });
+    renderResolveProgressState(`Images upgraded ${upgradedCount} | Failed 0`, {
       color: "#10b981",
       showSpinner: false,
       fontWeight: 600
     });
   }
+  await persistExtractionSessionPatch({
+    resolveProgress: cloneResolveProgress()
+  });
 
   return {
     cancelled: wasCancelled,
@@ -3229,66 +3504,48 @@ function renderLightboxImage() {
   if (!mainImage) {
     return;
   }
-  const initialUrl = lbImages[currentLbIndex].url;
-  const thumbUrl = lbImages[currentLbIndex].thumb;
-  const activeIndex = currentLbIndex;
 
-  // 1. Instantly show thumbnail (or cached 4K) so the user never sees a blank screen
-  if (imageCacheManager.blobUrls.has(initialUrl)) {
-    mainImage.src = imageCacheManager.blobUrls.get(initialUrl);
+  const activeIndex = currentLbIndex;
+  const initialUrl = lbImages[activeIndex].url;
+  const thumbUrl = lbImages[activeIndex].thumb;
+
+  // 1. Instantly show the thumbnail (from RAM if possible) so the screen is never blank
+  if (imageCacheManager.blobUrls.has(thumbUrl)) {
+    mainImage.src = imageCacheManager.blobUrls.get(thumbUrl);
   } else {
     mainImage.src = thumbUrl;
   }
+
+  // 2. Setup the Download button to use the memory cache if available
   if (downloadButtonElement) {
     downloadButtonElement.onclick = () => {
-      api.downloads.download({ url: initialUrl, saveAs: true }).catch(() => {});
+      const targetUrl = imageCacheManager.blobUrls.has(initialUrl) ? imageCacheManager.blobUrls.get(initialUrl) : initialUrl;
+      api.downloads.download({ url: targetUrl, saveAs: true }).catch(() => {});
     };
   }
 
-  if (!shouldAutoUpgradeResolutions() || !isFlickrUrl(initialUrl)) {
-    document.querySelectorAll(".lb-thumb").forEach((thumbnail, index) => {
-      thumbnail.classList.toggle("active", index === currentLbIndex);
-      if (index === currentLbIndex) {
-        thumbnail.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "center"
-        });
+  // 3. Load the final high-res URL through the cache manager and swap it in seamlessly
+  if (initialUrl !== thumbUrl || !imageCacheManager.blobUrls.has(thumbUrl)) {
+    imageCacheManager.get(initialUrl).then((blobUrl) => {
+      if (currentLbIndex === activeIndex && mainImage.src !== blobUrl) {
+        mainImage.src = blobUrl || initialUrl;
+      }
+    }).catch(() => {
+      if (currentLbIndex === activeIndex) {
+        mainImage.src = initialUrl;
       }
     });
-    return;
+  } else if (imageCacheManager.blobUrls.has(initialUrl)) {
+    mainImage.src = imageCacheManager.blobUrls.get(initialUrl);
   }
 
-  // 2. Fetch max URL, Cache it, then swap it in seamlessly
-  window.getTrueFlickrMax(initialUrl).then((maxData) => {
-    const maxUrl = maxData?.url || initialUrl;
-    if (currentLbIndex !== activeIndex) return;
-
-    imageCacheManager.get(maxUrl).then((blobUrl) => {
-      if (currentLbIndex === activeIndex && mainImage.src !== blobUrl) {
-        mainImage.src = blobUrl;
-      }
-    });
-
-    if (downloadButtonElement) {
-      downloadButtonElement.onclick = () => {
-        api.downloads.download({ url: maxUrl, saveAs: true }).catch(() => {});
-      };
-    }
-  }).catch(() => {
-    if (downloadButtonElement) {
-      downloadButtonElement.onclick = () => {
-        api.downloads.download({ url: initialUrl, saveAs: true }).catch(() => {});
-      };
-    }
-  });
-
-  // 3. Invisibly preload the 4K versions of the NEXT and PREVIOUS images
+  // 4. Invisibly preload the target URLs of the NEXT and PREVIOUS images into RAM
   const nextIndex = (currentLbIndex + 1) % lbImages.length;
   const prevIndex = (currentLbIndex - 1 + lbImages.length) % lbImages.length;
-  window.getTrueFlickrMax(lbImages[nextIndex]?.url).then((data) => imageCacheManager.preload(data?.url || lbImages[nextIndex]?.url));
-  window.getTrueFlickrMax(lbImages[prevIndex]?.url).then((data) => imageCacheManager.preload(data?.url || lbImages[prevIndex]?.url));
+  imageCacheManager.preload(lbImages[nextIndex]?.url);
+  imageCacheManager.preload(lbImages[prevIndex]?.url);
 
+  // 5. Update the thumbnail strip UI
   document.querySelectorAll(".lb-thumb").forEach((thumbnail, index) => {
     thumbnail.classList.toggle("active", index === currentLbIndex);
     if (index === currentLbIndex) {
