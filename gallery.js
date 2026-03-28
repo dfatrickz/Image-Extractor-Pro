@@ -664,6 +664,11 @@ window.getTrueFlickrMax = async function(thumbUrl) {
   const fallback = { url: thumbUrl, width: null, height: null };
   if (!thumbUrl.includes("flickr.com")) return fallback;
 
+  // 0. Strict Bailout: ONLY skip fetching if the URL is already an Original (_o).
+  if (/_([a-fA-F0-9]+)_o\.(jpg|jpeg|png|gif|webp)/i.test(thumbUrl)) {
+    return { ...fallback, fromCache: true };
+  }
+
   const cacheKey = "iep_flickr_cache";
   const storageLocal = (typeof chrome !== "undefined" && chrome?.storage?.local)
     ? chrome.storage.local
