@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="system">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Extractor Pro FAQ</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+      .iep-sticky-header-wrapper {
+        position: sticky;
+        top: 10px;
+        z-index: 1000;
+        background: var(--bg-primary);
+        padding: 12px 20px;
+        margin-top: -10px;
+        border-bottom: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+
+      .faq-shell {
+        max-width: 1180px;
+      }
+
+      .faq-nav {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      .faq-nav-links {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .faq-nav .ghost-button,
+      .faq-nav .secondary-button {
+        min-height: 42px;
+        padding: 0 18px;
+      }
+
+      .faq-main {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        margin: 0 auto;
+        max-width: 800px;
+        width: 100%;
+      }
+
+      .faq-intro,
+      .faq-item {
+        padding: 24px;
+      }
+
+      .faq-section-heading {
+        margin: 10px 6px 2px;
+      }
+
+      .faq-section-heading h2 {
+        border-bottom: 1px solid var(--border-color);
+        font-size: 1.45rem;
+        letter-spacing: -0.02em;
+        margin: 0;
+        padding-bottom: 12px;
+      }
+
+      .faq-item {
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .faq-item h3 {
+        color: var(--text-main);
+        font-size: 1.08rem;
+        letter-spacing: -0.02em;
+        line-height: 1.35;
+        margin: 0 0 12px;
+      }
+
+      .faq-item p {
+        color: var(--muted);
+        line-height: 1.7;
+        margin: 0;
+      }
+
+      .faq-item p + p {
+        margin-top: 12px;
+      }
+
+      .faq-callout {
+        background: var(--accent-soft);
+        border: 1px solid rgba(37, 99, 235, 0.14);
+        border-radius: var(--radius-md);
+        color: var(--text-main);
+        padding: 16px 18px;
+      }
+
+      .faq-callout p {
+        color: var(--text-main);
+      }
+
+      @media (max-width: 980px) {
+        .faq-nav {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .faq-nav-links {
+          width: 100%;
+        }
+
+        .faq-nav .ghost-button,
+        .faq-nav .secondary-button {
+          flex: 1 1 auto;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body class="gallery-body">
+    <main class="gallery-shell faq-shell">
+      <nav class="iep-sticky-header-wrapper" aria-label="FAQ navigation">
+        <div class="faq-nav">
+          <a class="ghost-button" href="guide.html">User Guide</a>
+          <div class="faq-nav-links">
+            <a class="ghost-button" href="https://github.com/dfatrickz/Image-Extractor-Pro/issues" target="_blank" rel="noreferrer noopener">Support</a>
+          </div>
+        </div>
+      </nav>
+
+      <section class="gallery-header surface">
+        <div class="header-copy">
+          <p class="eyebrow">Frequently Asked Questions</p>
+          <h1>Image Extractor Pro: Frequently Asked Questions</h1>
+          <p class="subtle">
+            Quick answers for launching the extension, downloading files, upgrading Flickr results, and troubleshooting pages that behave differently.
+          </p>
+          <a class="inline-link" href="guide.html">Read the full User Guide</a>
+        </div>
+      </section>
+
+      <section class="faq-main" aria-label="Frequently asked questions">
+        <article class="control-card surface faq-intro">
+          <div class="panel-heading">
+            <h2>Need the short version?</h2>
+            <p>
+              Image Extractor Pro is designed to stay lightweight until you intentionally activate it, and most downloads are organized automatically using the source page title. The sections below cover the most common questions users run into first.
+            </p>
+          </div>
+        </article>
+
+        <div class="faq-section-heading">
+          <p class="eyebrow">Getting Started</p>
+          <h2>Getting Started</h2>
+        </div>
+
+        <article class="control-card surface faq-item">
+          <h3>Why do I need to click the extension icon every time I want to use Fast Grab or open the gallery?</h3>
+          <p>
+            This is a security and performance feature built into your web browser. To protect your privacy and stop your computer from slowing down, browsers do not let extensions secretly run in the background on every single webpage you visit.
+          </p>
+          <p>
+            Clicking the extension icon wakes it up and gives it temporary permission to look for images on that specific page.
+          </p>
+        </article>
+
+        <article class="control-card surface faq-item">
+          <h3>How do I use Fast Grab without the Add-on window taking up my screen?</h3>
+          <p>
+            You can use the green <strong>Minimize (_)</strong> button! Minimizing hides the main window but leaves a small, floating icon on your screen. While minimized, the extension is still "awake," allowing you to use Right-Click saves or Fast Grab instantly.
+          </p>
+          <p>
+            <em>Note: If you click the red <strong>Close (X)</strong> button, it completely shuts down the extension for that page, meaning Fast Grab and Right-Click shortcuts will stop working until you reopen it.</em>
+          </p>
+        </article>
+
+        <article class="control-card surface faq-item">
+          <h3>Where do my downloaded images go?</h3>
+          <p>
+            Whenever you download an image or a batch of images, they are sent to the folder specified in your web browser&rsquo;s download settings.
+          </p>
+          <p>
+            To keep things organized, the extension automatically places your downloaded images inside a new folder, or a ZIP file, named after the title of the website you extracted them from.
+          </p>
+        </article>
+
+        <article class="control-card surface faq-item">
+          <h3>What is a ZIP file and why did it download one?</h3>
+          <p>
+            If you select multiple images and click download, the extension bundles them all together into a single ZIP archive. This is much faster than making your browser download many separate files one by one.
+          </p>
+          <p>
+            Once it is on your computer, you can usually just double-click the ZIP file to open it and access all your pictures.
+          </p>
+        </article>
+
+        <div class="faq-section-heading">
+          <p class="eyebrow">Settings &amp; Features</p>
+          <h2>Settings &amp; Features</h2>
+        </div>
+
+        <article class="control-card surface faq-item">
+          <h3>Which settings are best to use?</h3>
+          <p>
+            For most users, the Default Settings are a great starting point because the extension is pre-configured to be fast and reliable out of the box.
+          </p>
+          <p>
+            However, Image Extractor Pro is a powerful tool. Reading the <a class="inline-link" href="guide.html">User Guide</a> will show you exactly what each toggle does so you can tune it to your workflow. If you are not sure what an advanced setting means, it is usually safest to leave it on the default option until you need it.
+          </p>
+        </article>
+
+        <article class="control-card surface faq-item">
+          <h3>How do I get the highest resolution images from Flickr?</h3>
+          <p>
+            When you open the gallery on Flickr, the extension initially loads fast preview thumbnails so you can browse smoothly. To get the massive 4K or Original resolution files, click the Upgrade button in the gallery, or enable the Automatic Upgrade setting.
+          </p>
+          <div class="faq-callout">
+            <p>
+              Upgrading takes a moment because the extension is invisibly hunting down the true high-resolution files from Flickr&rsquo;s code. Once they are upgraded in the gallery, clicking Download will instantly save the massive files.
+            </p>
+          </div>
+          <p>
+            If you use the Right-Click or Fast Grab features with the upgrade setting enabled, the extension will do this hunting process automatically before saving.
+          </p>
+        </article>
+
+        <div class="faq-section-heading">
+          <p class="eyebrow">Troubleshooting</p>
+          <h2>Troubleshooting</h2>
+        </div>
+
+        <article class="control-card surface faq-item">
+          <h3>What do I do if the extension doesn&rsquo;t work for a particular website?</h3>
+          <p>
+            Some websites use highly complex code or custom layouts that make it difficult for the extension to find the images.
+          </p>
+          <p>
+            First step: try clicking on the image directly on the website to open it fully on your screen, and then try using the extension again.
+          </p>
+          <p>
+            Next step: if it still does not work, please submit a report on our <a class="inline-link" href="https://github.com/dfatrickz/Image-Extractor-Pro/issues" target="_blank" rel="noreferrer noopener">GitHub Support Page</a>. Include the link to the website that is not working, and we will do our best to update the extension to support it as quickly as possible.
+          </p>
+        </article>
+
+        <article class="control-card surface faq-item">
+          <h3>Why do some images say &ldquo;Source size unavailable&rdquo;?</h3>
+          <p>
+            When the extension finds a high-quality image, it tries to read the dimensions, such as 1920x1080, so you can see exactly how big it is. Occasionally, the website hides those numbers in its code.
+          </p>
+          <p>
+            The image will still download perfectly fine in high quality. The extension just could not read the exact pixel size beforehand.
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

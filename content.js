@@ -188,12 +188,12 @@
       this.hoverFlashTimer = 0;
       this.mountPromise = null;
       this.pendingSurferPoint = null;
+      this.isShutDown = false;
       this.state = {
         minimized: Boolean(initialFilters.startMinimized),
         busy: false,
         selectionMode: false,
         settingsMode: false,
-        showFab: true,
         hoveredTarget: null,
         selectedContainer: null,
         selectedContainerLabel: "",
@@ -261,7 +261,7 @@
         ignoredSelectors: "",
         blockedDomains: "adzerk.net\nad.doubleclick.net\ngoogleads.g.doubleclick.net\ntpc.googlesyndication.com\namazon-adsystem.com",
         preferLinkedOriginals: true,
-        showFab: false
+        alwaysHideFab: false
       };
     }
 
@@ -289,7 +289,7 @@
           : defaultFilters.galleryPagination,
         autoUpgradeResolutions: typeof filters.autoUpgradeResolutions === "boolean" ? filters.autoUpgradeResolutions : defaultFilters.autoUpgradeResolutions,
         blockedDomains: typeof filters.blockedDomains === "string" ? filters.blockedDomains : defaultFilters.blockedDomains,
-        showFab: typeof filters.showFab === "boolean" ? filters.showFab : defaultFilters.showFab,
+        alwaysHideFab: typeof filters.alwaysHideFab === "boolean" ? filters.alwaysHideFab : defaultFilters.alwaysHideFab,
         startMinimized: typeof filters.startMinimized === "boolean" ? filters.startMinimized : defaultFilters.startMinimized
       };
     }
@@ -352,7 +352,6 @@
     applyProfileFilters(filters) {
       const nextFilters = this.cloneFilters(filters);
       this.state.filters = nextFilters;
-      this.state.showFab = Boolean(nextFilters.showFab);
     }
 
     applyActiveProfileFilters() {
@@ -379,6 +378,7 @@
           this.state.profileData = this.normalizeProfileManager(result.iepSettingsManager);
           this.applyActiveProfileFilters();
           this.state.minimized = Boolean(this.state.filters.startMinimized);
+          this.updateFabVisibility();
           return;
         }
 
@@ -387,6 +387,7 @@
           this.state.profileData = this.createDefaultProfileData(migratedFilters);
           this.applyActiveProfileFilters();
           this.state.minimized = Boolean(this.state.filters.startMinimized);
+          this.updateFabVisibility();
           await this.saveManagerToStorage();
           return;
         }
@@ -401,6 +402,7 @@
         }));
         this.applyActiveProfileFilters();
         this.state.minimized = Boolean(this.state.filters.startMinimized);
+        this.updateFabVisibility();
         this.saveManagerToStorage();
       } catch (error) {
         // Ignore storage failures and fall back to defaults.
@@ -414,6 +416,7 @@
         }));
         this.applyActiveProfileFilters();
         this.state.minimized = Boolean(this.state.filters.startMinimized);
+        this.updateFabVisibility();
         this.saveManagerToStorage();
       }
     }
@@ -424,7 +427,6 @@
         return;
       }
 
-      this.state.filters.showFab = this.state.showFab;
       activeProfile.filters = this.cloneFilters(this.state.filters);
     }
 
@@ -435,8 +437,10 @@
     }
 
     toggle() {
+      this.isShutDown = false;
+
       if (!this.host) {
-        void this.mountUi();
+        void this.openPanel();
         return;
       }
 
@@ -491,6 +495,7 @@
         window.addEventListener("resize", this.boundResize, { passive: true });
         this.syncFloatingPosition();
         this.render();
+        this.updateFabVisibility();
       })();
 
       try {
@@ -537,13 +542,13 @@
         quickLazyLoadToggle: this.shadowRoot.getElementById("iepQuickLazyLoad"),
         quickSiteControlsToggle: this.shadowRoot.getElementById("iepQuickSiteControls"),
         quickFastGrabToggle: this.shadowRoot.getElementById("iepQuickFastGrab"),
-        quickShowFabToggle: this.shadowRoot.getElementById("iepQuickShowFab"),
+        quickAlwaysHideFabToggle: this.shadowRoot.getElementById("iepQuickAlwaysHideFab"),
         lazyLoadBypassToggle: this.shadowRoot.getElementById("iepLazyLoadBypass"),
         autoCheckDuplicatesToggle: this.shadowRoot.getElementById("iepAutoCheckDuplicates"),
         stickyToolbarToggle: this.shadowRoot.getElementById("iepStickyToolbar"),
         disableSiteControlsToggle: this.shadowRoot.getElementById("iepDisableSiteControls"),
         hoverDownloadToggle: this.shadowRoot.getElementById("iepHoverDownloadEnabled"),
-        showFabToggle: this.shadowRoot.getElementById("iepShowFab"),
+        alwaysHideFabToggle: this.shadowRoot.getElementById("iepAlwaysHideFab"),
         startMinimizedToggle: this.shadowRoot.getElementById("iepStartMinimized"),
         rateLimitInput: this.shadowRoot.getElementById("iepRateLimitMs"),
         individualWarningThresholdInput: this.shadowRoot.getElementById("iepIndividualWarningThreshold"),
@@ -667,10 +672,7 @@
         const nextProfile = {
           id: profileId,
           name: name.trim(),
-          filters: this.cloneFilters({
-            ...this.state.filters,
-            showFab: this.state.showFab
-          })
+          filters: this.cloneFilters(this.state.filters)
         };
 
         this.state.profileData.profiles.push(nextProfile);
@@ -680,7 +682,7 @@
         this.render();
       });
 
-      this.elements.deleteProfileButton.addEventListener("click", () => {
+      this.elements.deleteProfileButton.addEventListener("click", async () => {
         if (this.state.profileData.activeId === "default") {
           return;
         }
@@ -690,7 +692,11 @@
           return;
         }
 
-        const confirmed = window.confirm(`Delete the profile "${activeProfile.name}"?\n\n(Note: This action does not affect the current page you are browsing.)`);
+        const confirmed = await this.showConfirm(
+          `Delete the profile "${activeProfile.name}"? This only removes the saved preset and does not affect the current page.`,
+          "Delete Profile",
+          true
+        );
         if (!confirmed) {
           return;
         }
@@ -705,10 +711,12 @@
       });
 
       this.elements.minimizeButton.addEventListener("click", () => {
+        this.isShutDown = false;
         this.minimizePanel();
       });
 
       this.elements.closeButton.addEventListener("click", () => {
+        this.isShutDown = true;
         this.closeUi();
       });
 
@@ -779,8 +787,8 @@
         this.updateFiltersFromInputs();
       });
 
-      this.elements.quickShowFabToggle?.addEventListener("change", (event) => {
-        if (this.elements.showFabToggle) this.elements.showFabToggle.checked = event.target.checked;
+      this.elements.quickAlwaysHideFabToggle?.addEventListener("change", (event) => {
+        if (this.elements.alwaysHideFabToggle) this.elements.alwaysHideFabToggle.checked = event.target.checked;
         this.updateFiltersFromInputs();
       });
 
@@ -808,8 +816,10 @@
         this.updateFiltersFromInputs();
       });
 
-      this.elements.showFabToggle.addEventListener("change", (event) => {
-        if (this.elements.quickShowFabToggle) this.elements.quickShowFabToggle.checked = event.target.checked;
+      this.elements.alwaysHideFabToggle?.addEventListener("change", (event) => {
+        if (this.elements.quickAlwaysHideFabToggle) {
+          this.elements.quickAlwaysHideFabToggle.checked = event.target.checked;
+        }
         this.updateFiltersFromInputs();
       });
 
@@ -902,14 +912,21 @@
       if (btnExport) {
         btnExport.addEventListener("click", async () => {
           try {
-            const data = await api.storage.local.get(null);
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            const settingsJson = JSON.stringify(this.state.filters, null, 2);
+            const blob = new Blob([settingsJson], { type: "application/json" });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "FastGrab_Settings.json";
-            a.click();
-            URL.revokeObjectURL(url);
+
+            api.downloads.download({
+              url,
+              filename: "iep-settings.json",
+              saveAs: true
+            }).then(() => {
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            }).catch((err) => {
+              console.error("[IEP] Export failed:", err);
+              URL.revokeObjectURL(url);
+              alert("Failed to export settings.\n\n(Note: This action does not affect the current page you are browsing.)");
+            });
           } catch (_error) {
             alert("Failed to export settings.\n\n(Note: This action does not affect the current page you are browsing.)");
           }
@@ -938,25 +955,39 @@
       const btnReset = this.shadowRoot.getElementById("iepBtnResetSettings");
       if (btnReset) {
         btnReset.addEventListener("click", async () => {
-          if (confirm("Are you sure you want to reset all settings to their defaults?\n\n(Note: This action does not affect the current page you are browsing.)")) {
-            await api.storage.local.remove(["iepSettingsManager", "iepFilters"]);
-            await this.loadPersistedFilters();
-            await this.saveManagerToStorage();
-            this.renderProfileUI();
-            this.render();
-            alert("Settings reset to defaults.\n\n(Note: This action does not affect the current page you are browsing.)");
+          const confirmed = await this.showConfirm(
+            "Are you sure you want to reset all settings to their defaults? This does not affect the current page.",
+            "Reset Settings",
+            true
+          );
+          if (!confirmed) {
+            return;
           }
+
+          await api.storage.local.remove(["iepSettingsManager", "iepFilters"]);
+          await this.loadPersistedFilters();
+          await this.saveManagerToStorage();
+          this.renderProfileUI();
+          this.render();
+          alert("Settings reset to defaults.\n\n(Note: This action does not affect the current page you are browsing.)");
         });
       }
 
       const btnDelete = this.shadowRoot.getElementById("iepBtnDeleteData");
       if (btnDelete) {
         btnDelete.addEventListener("click", async () => {
-          if (confirm("WARNING: This will delete ALL your saved settings, cache, and extension data. Continue?\n\n(Note: This action does not affect the current page you are browsing.)")) {
-            await api.storage.local.clear();
-            window.iepLastRightClickedUrl = null;
-            alert("All data deleted. Please refresh the page.\n\n(Note: This action does not affect the current page you are browsing.)");
+          const confirmed = await this.showConfirm(
+            "Are you sure you want to delete your data and settings? This cannot be undone.",
+            "Delete Data",
+            true
+          );
+          if (!confirmed) {
+            return;
           }
+
+          await api.storage.local.clear();
+          window.iepLastRightClickedUrl = null;
+          alert("All data deleted. Please refresh the page.\n\n(Note: This action does not affect the current page you are browsing.)");
         });
       }
     }
@@ -969,37 +1000,87 @@
     closeSettingsModal() {
       this.toggleSettingsModal(false);
     }
+    showConfirm(message, confirmText = "Confirm", isDestructive = true) {
+      return new Promise((resolve) => {
+        const modal = this.shadowRoot.getElementById("iepConfirmModal");
+        const msgEl = this.shadowRoot.getElementById("iepConfirmMessage");
+        const cancelBtn = this.shadowRoot.getElementById("iepConfirmCancelBtn");
+        const actionBtn = this.shadowRoot.getElementById("iepConfirmActionBtn");
+
+        if (!modal || !msgEl || !cancelBtn || !actionBtn) {
+          resolve(window.confirm(`Image Extractor Pro\n\n${message}`));
+          return;
+        }
+
+        msgEl.textContent = message;
+        actionBtn.textContent = confirmText;
+        actionBtn.style.background = isDestructive ? "var(--iep-error, #ef4444)" : "var(--iep-primary, #3b82f6)";
+        actionBtn.style.borderColor = isDestructive ? "var(--iep-error, #ef4444)" : "var(--iep-primary, #3b82f6)";
+
+        modal.style.display = "flex";
+
+        const cleanup = () => {
+          modal.style.display = "none";
+          cancelBtn.removeEventListener("click", onCancel);
+          actionBtn.removeEventListener("click", onConfirm);
+        };
+
+        const onCancel = () => {
+          cleanup();
+          resolve(false);
+        };
+        const onConfirm = () => {
+          cleanup();
+          resolve(true);
+        };
+
+        cancelBtn.addEventListener("click", onCancel);
+        actionBtn.addEventListener("click", onConfirm);
+      });
+    }
+    updateFabVisibility() {
+      if (!this.elements.fab) return;
+      const panelElement = this.elements.panel;
+      const isPanelOpen = Boolean(panelElement) && !panelElement.hidden && panelElement.style.display !== "none";
+      const alwaysHide = Boolean(this.state.filters.alwaysHideFab);
+      const persistent = Boolean(this.state.filters.persistentMode);
+
+      if (this.isShutDown || alwaysHide) {
+        this.elements.fab.hidden = true;
+        this.elements.fab.style.display = "none";
+      } else if (!isPanelOpen) {
+        this.elements.fab.hidden = false;
+        this.elements.fab.style.display = "flex";
+      } else if (persistent) {
+        this.elements.fab.hidden = false;
+        this.elements.fab.style.display = "flex";
+      } else {
+        this.elements.fab.hidden = true;
+        this.elements.fab.style.display = "none";
+      }
+    }
     async maximize() {
       await this.mountUi();
+      this.isShutDown = false;
       this.state.minimized = false;
+      this.state.settingsMode = false;
       this.render();
-      if (this.elements.panel) {
-        this.elements.panel.hidden = false;
-        this.elements.panel.style.display = "flex";
-      }
-      if (this.elements.fab) {
-        this.elements.fab.hidden = !this.state.showFab;
-        this.elements.fab.style.display = this.state.showFab ? "flex" : "none";
-      }
+      this.updateFabVisibility();
     }
 
     minimize() {
       this.stopSelectionMode();
+      this.isShutDown = false;
       this.state.minimized = true;
-      this.closeSettingsModal();
+      this.state.settingsMode = false;
       this.render();
-      if (this.elements.panel) {
-        this.elements.panel.hidden = true;
-        this.elements.panel.style.display = "none";
-      }
-      if (this.elements.fab) {
-        this.elements.fab.hidden = !this.state.showFab;
-        this.elements.fab.style.display = this.state.showFab ? "flex" : "none";
-      }
+      this.updateFabVisibility();
     }
 
     async openPanel() {
+      this.isShutDown = false;
       await this.maximize();
+      this.updateFabVisibility();
     }
 
     minimizePanel() {
@@ -1007,32 +1088,15 @@
     }
     closeUi() {
       this.stopSelectionMode();
-      document.removeEventListener("mousemove", this.boundSurferMouseMove, true);
-      document.removeEventListener("scroll", this.boundSurferScroll, true);
-      window.removeEventListener("resize", this.boundResize, { passive: true });
-      window.removeEventListener("pointermove", this.boundFabPointerMove, true);
-      window.removeEventListener("pointerup", this.boundFabPointerUp, true);
-      window.removeEventListener("pointermove", this.boundPanelPointerMove, true);
-      window.removeEventListener("pointerup", this.boundPanelPointerUp, true);
-      if (this.surferHoverFrame) {
-        window.cancelAnimationFrame(this.surferHoverFrame);
-        this.surferHoverFrame = 0;
-      }
-      if (this.surferScrollFrame) {
-        window.cancelAnimationFrame(this.surferScrollFrame);
-        this.surferScrollFrame = 0;
-      }
-      if (this.hoverFlashTimer) {
-        window.clearTimeout(this.hoverFlashTimer);
-        this.hoverFlashTimer = 0;
-      }
+      this.isShutDown = true;
+      this.state.minimized = true;
+      this.state.settingsMode = false;
       this.pendingSurferPoint = null;
       this.dragState = null;
       this.clearPreviewRefreshTimer();
-      this.host?.remove();
-      this.host = null;
-      this.shadowRoot = null;
-      this.elements = {};
+      this.hideSurferHoverButton();
+      this.render();
+      this.updateFabVisibility();
     }
     renderFormatOptions() {
       renderFormatGroup(this.elements.formatOptions, FORMAT_GROUPS.filter((group) => !group.advanced), this.state.filters.formats);
@@ -1053,10 +1117,11 @@
         || hasPreview
         || this.state.statusMessage !== "Run a page extract or select an area, then review the match count before opening the gallery.";
 
-      this.elements.panel.hidden = this.state.minimized;
-      this.elements.fab.hidden = !this.state.showFab;
-      this.elements.fab.style.display = this.state.showFab ? "flex" : "none";
-      this.elements.settingsModal.hidden = !this.state.settingsMode;
+      const isPanelVisible = !this.state.minimized && !this.isShutDown;
+      this.elements.panel.hidden = !isPanelVisible;
+      this.elements.panel.style.display = isPanelVisible ? "flex" : "none";
+      this.updateFabVisibility();
+      this.elements.settingsModal.hidden = this.isShutDown || !this.state.settingsMode;
       this.elements.shell.dataset.theme = this.state.filters.theme || "system";
       this.elements.shell.classList.remove("iep-scale-small", "iep-scale-medium", "iep-scale-big");
       this.elements.shell.classList.add(`iep-scale-${this.state.filters.windowScale}`);
@@ -1079,13 +1144,13 @@
       if (this.elements.quickLazyLoadToggle) this.elements.quickLazyLoadToggle.checked = Boolean(this.state.filters.lazyLoadBypass);
       if (this.elements.quickSiteControlsToggle) this.elements.quickSiteControlsToggle.checked = Boolean(this.state.filters.disableSiteControls);
       if (this.elements.quickFastGrabToggle) this.elements.quickFastGrabToggle.checked = Boolean(this.state.filters.hoverDownloadEnabled);
-      if (this.elements.quickShowFabToggle) this.elements.quickShowFabToggle.checked = Boolean(this.state.showFab);
+      if (this.elements.quickAlwaysHideFabToggle) this.elements.quickAlwaysHideFabToggle.checked = Boolean(this.state.filters.alwaysHideFab);
+      if (this.elements.alwaysHideFabToggle) this.elements.alwaysHideFabToggle.checked = Boolean(this.state.filters.alwaysHideFab);
       this.elements.lazyLoadBypassToggle.checked = Boolean(this.state.filters.lazyLoadBypass);
       this.elements.autoCheckDuplicatesToggle.checked = Boolean(this.state.filters.autoCheckDuplicates);
       this.elements.stickyToolbarToggle.checked = Boolean(this.state.filters.stickyToolbar);
       this.elements.disableSiteControlsToggle.checked = Boolean(this.state.filters.disableSiteControls);
       this.elements.hoverDownloadToggle.checked = Boolean(this.state.filters.hoverDownloadEnabled);
-      this.elements.showFabToggle.checked = Boolean(this.state.showFab);
       this.elements.startMinimizedToggle.checked = Boolean(this.state.filters.startMinimized);
       this.elements.rateLimitInput.value = String(this.state.filters.rateLimitMs);
       this.elements.individualWarningThresholdInput.value = String(this.state.filters.individualDownloadWarningThreshold);
@@ -1123,13 +1188,13 @@
       if (this.elements.quickLazyLoadToggle) this.elements.quickLazyLoadToggle.disabled = this.state.busy;
       if (this.elements.quickSiteControlsToggle) this.elements.quickSiteControlsToggle.disabled = this.state.busy;
       if (this.elements.quickFastGrabToggle) this.elements.quickFastGrabToggle.disabled = this.state.busy;
-      if (this.elements.quickShowFabToggle) this.elements.quickShowFabToggle.disabled = this.state.busy;
+      if (this.elements.quickAlwaysHideFabToggle) this.elements.quickAlwaysHideFabToggle.disabled = this.state.busy;
+      if (this.elements.alwaysHideFabToggle) this.elements.alwaysHideFabToggle.disabled = this.state.busy;
       this.elements.lazyLoadBypassToggle.disabled = this.state.busy;
       this.elements.autoCheckDuplicatesToggle.disabled = this.state.busy;
       this.elements.stickyToolbarToggle.disabled = this.state.busy;
       this.elements.disableSiteControlsToggle.disabled = this.state.busy;
       this.elements.hoverDownloadToggle.disabled = this.state.busy;
-      this.elements.showFabToggle.disabled = this.state.busy;
       this.elements.startMinimizedToggle.disabled = this.state.busy;
       this.elements.rateLimitInput.disabled = this.state.busy;
       this.elements.individualWarningThresholdInput.disabled = this.state.busy;
@@ -1267,7 +1332,7 @@
       this.state.filters.stickyToolbar = Boolean(this.elements.stickyToolbarToggle.checked);
       this.state.filters.disableSiteControls = Boolean(this.elements.disableSiteControlsToggle.checked);
       this.state.filters.hoverDownloadEnabled = Boolean(this.elements.hoverDownloadToggle?.checked);
-      this.state.showFab = Boolean(this.elements.showFabToggle.checked);
+      this.state.filters.alwaysHideFab = Boolean(this.elements.alwaysHideFabToggle?.checked);
       this.state.filters.startMinimized = Boolean(this.elements.startMinimizedToggle.checked);
       this.state.filters.rateLimitMs = Math.max(0, Number.parseInt(this.elements.rateLimitInput.value || "0", 10) || 0);
       this.state.filters.individualDownloadWarningThreshold = Math.max(0, Number.parseInt(this.elements.individualWarningThresholdInput.value || "30", 10) || 0);
@@ -1275,7 +1340,6 @@
       this.state.filters.blockedDomains = String(this.elements.blockedDomainsInput?.value || "").trim();
       this.state.filters.preferLinkedOriginals = Boolean(this.elements.preferLinkedOriginalsCheckbox.checked);
       this.state.filters.formats = readFormatStateFromUi(this.shadowRoot, this.createDefaultFormatState());
-      this.state.filters.showFab = this.state.showFab;
       this.syncActiveProfileFromState();
       this.saveManagerToStorage();
 
@@ -1651,6 +1715,11 @@
         return;
       }
 
+      if (this.isShutDown) {
+        this.hideSurferHoverButton();
+        return;
+      }
+
       lastMouseX = event.clientX;
       lastMouseY = event.clientY;
       this.queueSurferHoverRefresh({
@@ -1661,6 +1730,11 @@
 
     handleSurferScroll(event) {
       if (event.composedPath && event.composedPath().some((element) => element?.id === "iepSurferHoverBtn")) {
+        return;
+      }
+
+      if (this.isShutDown) {
+        this.hideSurferHoverButton();
         return;
       }
 
@@ -1703,7 +1777,7 @@
         return;
       }
 
-      if (!this.state.filters.hoverDownloadEnabled || this.state.selectionMode || !point) {
+      if (this.isShutDown || !this.state.filters.hoverDownloadEnabled || this.state.selectionMode || !point) {
         this.hideSurferHoverButton();
         return;
       }
@@ -1897,7 +1971,9 @@
     getTemplate() {
       const shouldStartMinimized = Boolean(this.state.filters.startMinimized);
       const shellClassName = shouldStartMinimized ? "iep-shell iep-minimized" : "iep-shell";
-      const initialFabHidden = !shouldStartMinimized && !this.state.showFab ? " hidden" : "";
+      const shouldShowFabInitially = !this.state.filters.alwaysHideFab
+        && (shouldStartMinimized || this.state.filters.persistentMode);
+      const initialFabHidden = shouldShowFabInitially ? "" : " hidden";
       const initialPanelHidden = shouldStartMinimized ? " hidden" : "";
       return `
         <style>
@@ -2110,8 +2186,8 @@
               <div class="iep-header-controls">
                 <div class="iep-window-actions">
                   <button id="iepSettingsButton" class="iep-icon-button" type="button" aria-label="Open settings" aria-pressed="false"><span style="color: #60a5fa;">&#9881;</span></button>
-                  <button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel">_</button>
-                  <button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel">x</button>
+                  <button id="iepMinimizeButton" class="iep-icon-button" type="button" aria-label="Minimize panel" title="Minimize"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                  <button id="iepCloseButton" class="iep-icon-button" type="button" aria-label="Close panel" title="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
               </div>
               <div style="position: absolute; bottom: 14px; right: 18px;">
@@ -2123,7 +2199,7 @@
             </header>
             <div class="iep-body">
               <section class="iep-card"><div class="iep-action-grid"><button id="iepExtractAllButton" class="iep-button iep-button-primary" type="button">Extract All from Page</button><button id="iepSelectAreaButton" class="iep-button iep-button-secondary" type="button">Select Area to Extract</button></div><div id="iepPreviewContainer" class="iep-preview-container"><div class="iep-preview-inner"><div class="iep-preview-stack"><div id="iepScanProgressWrapper" style="display: none; padding: 12px; background: var(--iep-bg-secondary, #1e293b); border-radius: 6px; margin-bottom: 10px;"><div style="width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden;"><div id="iepScanProgressBar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.1s ease-out;"></div></div><div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: #94a3b8;"><span id="iepScanStatusText">Initializing scan...</span><span id="iepScanPercentText">0%</span></div></div><p id="iepSelectionLabel" class="iep-selection-label">No extraction scope selected yet.</p><p id="iepPreviewCount" class="iep-preview-count">Found 0 images matching your filters.</p><p id="iepPreviewMeta" class="iep-preview-meta">Use one of the extract actions above to preview the result count first.</p><section id="iepStatus" class="iep-status" data-tone="default" aria-live="polite"><p id="iepStatusMessage">Run a page extract or select an area, then review the match count before opening the gallery.</p></section><div class="iep-actions"><button id="iepCancelButton" class="iep-button iep-button-secondary" type="button" hidden>Clear Preview</button><button id="iepReviewButton" class="iep-button iep-button-primary" type="button" hidden>Review &amp; Download</button></div></div></div></div></section>
-              <section class="iep-card"><h2>Quick Settings</h2><div style="display: grid; gap: 10px;"><label class="iep-toggle-row"><input id="iepQuickLazyLoad" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)<button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickSiteControls" type="checkbox"><span>Disable website image controls<button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickFastGrab" type="checkbox"><span>Enable Fast Grab<button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Shows a quick-download button over images when you hover over them.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickShowFab" type="checkbox"><span>Show Floating Icon on Pages<button class="iep-help-btn" type="button" data-anchor="show-fab" title="Show or hide the floating launch button.">&#63;</button></span></label></div><div style="display: flex; justify-content: center; margin-top: 16px; border-top: 1px solid var(--iep-border-subtle); padding-top: 12px;"><button id="iepBtnOpenGuide" class="iep-button iep-button-secondary" type="button" style="padding: 6px 14px; font-size: 12px; display: flex; gap: 6px; align-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>Open Guide</button></div></section>
+              <section class="iep-card"><h2>Quick Settings</h2><div style="display: grid; gap: 10px;"><label class="iep-toggle-row"><input id="iepQuickLazyLoad" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)<button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickSiteControls" type="checkbox"><span>Disable website image controls<button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickFastGrab" type="checkbox"><span>Enable Fast Grab<button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Shows a quick-download button over images when you hover over them.">&#63;</button></span></label><label class="iep-toggle-row"><input id="iepQuickAlwaysHideFab" type="checkbox"><span>Always Hide floating icon<button class="iep-help-btn" type="button" data-anchor="always-hide-fab" title="Disables the floating icon completely, even when minimized.">&#63;</button></span></label></div><div style="display: flex; justify-content: center; margin-top: 16px; border-top: 1px solid var(--iep-border-subtle); padding-top: 12px;"><button id="iepBtnOpenGuide" class="iep-button iep-button-secondary" type="button" style="padding: 6px 14px; font-size: 12px; display: flex; gap: 6px; align-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>Open Guide</button></div></section>
               <section class="iep-card"><h2>Filters</h2><p>Image search filters for size &amp; formats</p><div class="iep-filter-grid"><label class="iep-field"><span>Minimum Width (px)</span><input id="iepMinWidth" type="number" min="0" step="10" value="150"></label><label class="iep-field"><span>Minimum Height (px)</span><input id="iepMinHeight" type="number" min="0" step="10" value="150"></label></div><div id="iepFormatOptions" class="iep-format-grid" aria-label="Format filters"></div><div class="iep-inline-group"><span class="iep-field-label">Extra supported formats</span><div id="iepAdvancedFormatOptions" class="iep-format-grid iep-format-grid-compact" aria-label="Advanced format filters"></div></div></section>
               <details class="iep-details"><summary>Advanced Settings</summary><div class="iep-details-body"><label class="iep-field iep-field-full"><span>Ignore selectors or class fragments</span><input id="iepIgnoredSelectors" type="text" placeholder=".avatar, .logo, sponsor-card"></label><label class="iep-toggle-row"><input id="iepPreferLinkedOriginals" type="checkbox" checked><span>Prefer linked original image URLs when available</span></label></div></details>
             </div>
@@ -2190,13 +2266,23 @@
                 <section class="iep-settings-panel">
                   <h3>Safety &amp; Behavior</h3>
                   <p>Controls for global injection, Fast Grab behavior, and duplicate analysis defaults.</p>
-                  <div class="iep-settings-stack">
-                    <label class="iep-toggle-row"><input id="iepPersistentMode" type="checkbox"><span>Enable persistent floating icon<button class="iep-help-btn" data-anchor="persistent-mode" title="Injects the extension automatically on all pages.">&#63;</button></span></label>
-                    <label class="iep-toggle-row"><input id="iepLazyLoadBypass" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)<button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></span></label>
-                    <label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls<button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></span></label>
+
+                  <h4 style="margin: 12px 0 6px; font-size: 13px; color: var(--iep-text-main);">Webpage controls</h4>
+                  <div class="iep-settings-stack" style="margin-bottom: 12px;">
                     <label class="iep-toggle-row"><input id="iepHoverDownloadEnabled" type="checkbox" checked><span>Enable Fast Grab<button class="iep-help-btn" type="button" data-anchor="fast-grab" title="Shows a quick-download button over images when you hover over them.">&#63;</button></span></label>
-                    <label class="iep-toggle-row"><input id="iepShowFab" type="checkbox" checked><span>Show Floating Icon on Pages<button class="iep-help-btn" data-anchor="show-fab" title="Show or hide the floating launch button.">&#63;</button></span></label>
+                    <label class="iep-toggle-row"><input id="iepDisableSiteControls" type="checkbox" checked><span>Disable website-specific image controls<button class="iep-help-btn" type="button" data-anchor="site-controls" title="Removes invisible overlays so you can right-click and Fast Grab images on protected sites.">&#63;</button></span></label>
+                    <label class="iep-toggle-row"><input id="iepLazyLoadBypass" type="checkbox"><span>Lazy Load Bypass (Auto-Scroll)<button class="iep-help-btn" type="button" data-anchor="lazy-load" title="Automatically scrolls the page to wake up hidden images before extracting.">&#63;</button></span></label>
+                  </div>
+
+                  <h4 style="margin: 8px 0 6px; font-size: 13px; color: var(--iep-text-main);">Icon Settings</h4>
+                  <div class="iep-settings-stack" style="margin-bottom: 12px;">
                     <label class="iep-toggle-row"><input id="iepStartMinimized" type="checkbox"><span>Start Minimized<button class="iep-help-btn" data-anchor="start-minimized" title="Start as a small button instead of a full panel.">&#63;</button></span></label>
+                    <label class="iep-toggle-row"><input id="iepPersistentMode" type="checkbox"><span>Enable persistent floating icon<button class="iep-help-btn" data-anchor="persistent-mode" title="Injects the extension automatically on all pages and keeps the icon visible when panel is open.">&#63;</button></span></label>
+                    <label class="iep-toggle-row"><input id="iepAlwaysHideFab" type="checkbox"><span>Always Hide floating icon<button class="iep-help-btn" data-anchor="always-hide-fab" title="Disables the floating icon completely, even when minimized.">&#63;</button></span></label>
+                  </div>
+
+                  <h4 style="margin: 8px 0 6px; font-size: 13px; color: var(--iep-text-main);">Advanced</h4>
+                  <div class="iep-settings-stack">
                     <label class="iep-toggle-row"><input id="iepAutoCheckDuplicates" type="checkbox"><span>Enable automatic duplicate checking<button class="iep-help-btn" data-anchor="auto-dupe" title="Automatically scan and hide visual duplicates.">&#63;</button></span></label>
                     <label class="iep-field"><span>Rate Limit / Delay per image (ms)<button class="iep-help-btn" type="button" data-anchor="rate-limit" title="Adds a delay between downloads to reduce site throttling or browser pressure.">&#63;</button></span><input id="iepRateLimitMs" type="number" min="0" step="50" value="0"></label>
                     <label class="iep-field"><span>Individual Download Warning Threshold<button class="iep-help-btn" data-anchor="warning-threshold" title="Warns before downloading too many single files.">&#63;</button></span><input id="iepIndividualWarningThreshold" type="number" min="0" step="1" value="30"></label>
@@ -2253,7 +2339,7 @@
                       <input type="file" id="iepBtnImportSettings" accept=".json" style="display: none;">
                     </label>
                     <button id="iepBtnResetSettings" class="iep-button iep-button-secondary" type="button">Reset to Defaults</button>
-                    <button id="iepBtnDeleteData" class="iep-button" type="button" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">Delete My Data</button>
+                    <button id="iepBtnDeleteData" class="iep-button" type="button" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);">Delete Extension Data</button>
                   </div>
                   <div id="iepDataStatus" style="text-align: center; font-size: 13px; margin-top: 14px; height: 16px; font-weight: 500; transition: opacity 0.3s; opacity: 0;"></div>
                   <div class="iep-settings-stack" style="margin-top: 8px; border-top: 1px solid var(--iep-border); padding-top: 16px;">
@@ -2264,6 +2350,16 @@
                 </section>
               </div>
             </section>
+          </div>
+          <div id="iepConfirmModal" style="display: none; position: absolute; inset: 0; background: rgba(15, 23, 42, 0.8); z-index: 9999; align-items: center; justify-content: center; border-radius: 8px; backdrop-filter: blur(4px); pointer-events: auto;">
+            <div style="background: var(--iep-surface, #1e293b); border: 1px solid var(--iep-border-subtle, #334155); border-radius: 8px; padding: 24px; max-width: 320px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center;">
+              <h3 style="color: var(--iep-text-main, #f8fafc); font-size: 16px; margin: 0 0 12px 0; font-weight: 600;">Image Extractor Pro</h3>
+              <p id="iepConfirmMessage" style="color: var(--iep-text-muted, #94a3b8); font-size: 14px; margin: 0 0 24px 0; line-height: 1.5;"></p>
+              <div style="display: flex; gap: 12px; justify-content: center;">
+                <button id="iepConfirmCancelBtn" class="secondary-button iep-button iep-button-secondary" type="button" style="flex: 1;">Cancel</button>
+                <button id="iepConfirmActionBtn" class="primary-button iep-button iep-button-primary" type="button" style="flex: 1; background: var(--iep-error, #ef4444); border-color: var(--iep-error, #ef4444);">Confirm</button>
+              </div>
+            </div>
           </div>
         </div>
       `;

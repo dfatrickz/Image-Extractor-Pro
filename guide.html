@@ -104,9 +104,65 @@
       padding-left: 6px;
     }
     .github-link:hover { color: var(--text-main) !important; }
+    /* Navigation Styles */
+    .iep-sticky-header-wrapper {
+      position: sticky;
+      top: 10px;
+      z-index: 1000;
+      background: var(--bg);
+      padding: 12px 20px;
+      margin: 10px auto 30px auto;
+      border-bottom: 1px solid var(--border);
+      border-radius: 8px;
+      max-width: 800px;
+    }
+    .faq-nav {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+    }
+    .faq-nav-links {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .ghost-button {
+      display: inline-block;
+      text-decoration: none;
+      color: var(--text-main);
+      font-weight: 600;
+      font-size: 14px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      transition: background 0.2s, color 0.2s;
+    }
+    .ghost-button:hover {
+      background: var(--border);
+    }
+    @media (max-width: 600px) {
+      .faq-nav {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .ghost-button {
+        text-align: center;
+      }
+    }
   </style>
 </head>
 <body>
+  <nav class="iep-sticky-header-wrapper" aria-label="Guide navigation">
+    <div class="faq-nav">
+      <a class="ghost-button" href="faq.html">Open FAQ</a>
+      <div class="faq-nav-links">
+        <a class="ghost-button" href="https://github.com/dfatrickz/Image-Extractor-Pro/issues" target="_blank" rel="noreferrer noopener">Support</a>
+      </div>
+    </div>
+  </nav>
 
   <h1>Image Extractor Pro Guide</h1>
   <h3>Welcome!</h3>
@@ -136,8 +192,9 @@
         <a href="#lazy-load" class="toc-link">Lazy Load Bypass</a>
         <a href="#site-controls" class="toc-link">Disable Site Controls</a>
         <a href="#fast-grab" class="toc-link">Enable Fast Grab</a>
+        <a href="#window-controls" class="toc-link">Window Controls</a>
         <a href="#persistent-mode" class="toc-link">Persistent Floating Icon</a>
-        <a href="#show-fab" class="toc-link">Show Floating Icon</a>
+        <a href="#always-hide-fab" class="toc-link">Always Hide Floating Icon</a>
         <a href="#start-minimized" class="toc-link">Start Minimized</a>
         <a href="#auto-dupe" class="toc-link">Auto Duplicate Checking</a>
         <a href="#rate-limit" class="toc-link">Rate Limit / Delay</a>
@@ -233,31 +290,40 @@
     <p>Useful for quick, single-image downloads without needing to open the full review gallery.</p>
   </div>
 
+  <div id="window-controls" class="setting-block">
+    <h3>Window Controls</h3>
+    <h4><strong>How they work</strong></h4>
+    <p>Click the red X to completely close the extension. Click the green _ to minimize the panel to a floating icon.</p>
+    <br><br>
+    <h4><strong>When to use them</strong></h4>
+    <p>Use Minimize when you want Fast Grab or Right-Click shortcuts to stay awake without the full panel taking up space. Use Close when you are completely done on that page and want to shut the extension down until you click the add-on again.</p>
+  </div>
+
   <div id="persistent-mode" class="setting-block">
     <h3>Persistent Floating Icon</h3>
     <h4><strong>What it does</strong></h4>
-    <p>Injects the floating Image Extractor icon on every website automatically.</p>
+    <p>Injects the floating Image Extractor icon on every website automatically, and forces the icon to stay visible on your screen even while the main panel is open.</p>
     <br><br>
     <h4><strong>When to use it</strong></h4>
     <p>If you use the tool frequently. If you only want the tool to appear when you click the add-on in your browser toolbar, turn it off.</p>
   </div>
 
-  <div id="show-fab" class="setting-block">
-    <h3>Show Floating Icon on Pages</h3>
+  <div id="always-hide-fab" class="setting-block">
+    <h3>Always Hide floating icon</h3>
     <h4><strong>What it does</strong></h4>
-    <p>Displays or hides the floating button inside the webpage.</p>
+    <p>Completely disables the floating icon from appearing on your screen, even if the extension is minimized.</p>
     <br><br>
     <h4><strong>When to use it</strong></h4>
-    <p>Turn this off if you find the button distracting and prefer to only launch the extractor from your browser's extension menu.</p>
+    <p>Turn this on if you want the extension to run completely invisibly, relying only on keyboard shortcuts or clicking the toolbar icon to reopen it.</p>
   </div>
 
   <div id="start-minimized" class="setting-block">
     <h3>Start Minimized</h3>
     <h4><strong>What it does</strong></h4>
-    <p>When enabled, the extension opens as just a small floating button. When disabled, the full extraction panel opens immediately when the page loads.</p>
+    <p>When you launch the extension, it will instantly shrink into a small floating icon instead of opening the large panel. This is perfect for Fast Grab power-users.</p>
     <br><br>
     <h4><strong>When to use it</strong></h4>
-    <p>Keep this checked to prevent the large panel from popping up and blocking your view every time you navigate to a new page.</p>
+    <p>Enable this if you usually work from the floating icon and only open the full panel when you need the full extractor controls.</p>
   </div>
 
   <div id="auto-dupe" class="setting-block">
