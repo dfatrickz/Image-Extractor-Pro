@@ -3516,6 +3516,11 @@ async function registerCandidates(imageMap, candidates, context) {
       return url.split("?")[0];
     }
 
+    // Flickr: Strip dynamic tracking/signature parameters (?s=...) that break direct CDN links
+    if (url.includes("staticflickr.com/")) {
+      url = url.split("?")[0];
+    }
+
     // Pinterest: Upgrade thumbnails (e.g., /236x/, /736x/) to their raw original files
     if (url.includes("i.pinimg.com/")) {
       return url.replace(/(i\.pinimg\.com)\/(?:\d+x)\//i, "$1/originals/");

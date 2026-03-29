@@ -1,8 +1,8 @@
 ﻿{
   "manifest_version": 3,
-  "name": "Image Extractor Pro",
+  "name": "FastGrab Image Downloader",
   "version": "2.0.0",
-  "description": "Extract, filter, and download high-resolution images. Features optional Advanced Settings for lazy-load bypassing, Fast Grab hover downloads, and global floating UI.",
+  "description": "Extract, filter, and download high-resolution images. Features Advanced Settings for lazy-load bypassing, Fast Grab hover downloads, and global floating UI.",
   "permissions": [
     "activeTab",
     "contextMenus",
@@ -11,7 +11,7 @@
     "downloads"
   ],
   "host_permissions": [
-  	"<all_urls>"
+    "<all_urls>"
   ],
   "background": {
     "scripts": [
@@ -19,18 +19,21 @@
     ]
   },
   "action": {
-    "default_title": "Image Extractor Pro"
+    "default_title": "FastGrab Image Downloader"
   },
   "icons": {
     "16": "icon-16.png",
     "32": "icon-32.png",
-	"48": "icon-48.png",
-	"128": "icon-128.png"
+    "48": "icon-48.png",
+    "128": "icon-128.png"
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "image-extractor-pro@github.demigui",
-      "strict_min_version": "121.0"
+      "id": "fastgrab-image-downloader@github.dfatrickz",
+      "strict_min_version": "121.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }
