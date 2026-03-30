@@ -1008,7 +1008,7 @@
         const actionBtn = this.shadowRoot.getElementById("iepConfirmActionBtn");
 
         if (!modal || !msgEl || !cancelBtn || !actionBtn) {
-          resolve(window.confirm(`Image Extractor Pro\n\n${message}`));
+          resolve(window.confirm(`FastGrab Image Downloader\n\n${message}`));
           return;
         }
 
@@ -2175,11 +2175,11 @@
           [hidden] { display: none !important; }
         </style>
         <div id="iepShell" class="${shellClassName}" data-theme="system">
-          <button id="iepFab" class="iep-fab" type="button" aria-label="Open Image Extractor Pro"${initialFabHidden}><span id="iepFabGrip" class="iep-fab-grip" aria-hidden="true"></span><span class="iep-fab-icon" aria-hidden="true"></span></button>
-          <section id="iepPanel" class="iep-panel" role="dialog" aria-modal="false" aria-label="Image Extractor Pro panel"${initialPanelHidden}>
+          <button id="iepFab" class="iep-fab" type="button" aria-label="Open FastGrab Image Downloader"${initialFabHidden}><span id="iepFabGrip" class="iep-fab-grip" aria-hidden="true"></span><span class="iep-fab-icon" aria-hidden="true"></span></button>
+          <section id="iepPanel" class="iep-panel" role="dialog" aria-modal="false" aria-label="FastGrab Image Downloader panel"${initialPanelHidden}>
             <header class="iep-panel-header">
               <div>
-                <p class="iep-kicker">Image Extractor Pro</p>
+                <p class="iep-kicker">FastGrab Image Downloader</p>
                 <h1 class="iep-title">Scoped Image Extraction</h1>
                 <p class="iep-subtitle">Extract, filter, and manage images from the current page.</p>
               </div>
@@ -2208,7 +2208,7 @@
           <div id="iepSelectionOutline" class="iep-selection-outline" hidden></div>
           <div id="iepSettingsModal" class="iep-settings-modal" hidden>
             <div id="iepSettingsBackdrop" class="iep-settings-backdrop"></div>
-            <section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="Image Extractor Pro settings">
+            <section class="iep-settings-dialog" role="dialog" aria-modal="true" aria-label="FastGrab Image Downloader settings">
               <div class="iep-modal-header">
                 <div style="display: flex; align-items: center; gap: 12px;">
                   <h2 style="color: #ffffff;">Settings</h2>
@@ -2353,7 +2353,7 @@
           </div>
           <div id="iepConfirmModal" style="display: none; position: absolute; inset: 0; background: rgba(15, 23, 42, 0.8); z-index: 9999; align-items: center; justify-content: center; border-radius: 8px; backdrop-filter: blur(4px); pointer-events: auto;">
             <div style="background: var(--iep-surface, #1e293b); border: 1px solid var(--iep-border-subtle, #334155); border-radius: 8px; padding: 24px; max-width: 320px; width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center;">
-              <h3 style="color: var(--iep-text-main, #f8fafc); font-size: 16px; margin: 0 0 12px 0; font-weight: 600;">Image Extractor Pro</h3>
+              <h3 style="color: var(--iep-text-main, #f8fafc); font-size: 16px; margin: 0 0 12px 0; font-weight: 600;">FastGrab Image Downloader</h3>
               <p id="iepConfirmMessage" style="color: var(--iep-text-muted, #94a3b8); font-size: 14px; margin: 0 0 24px 0; line-height: 1.5;"></p>
               <div style="display: flex; gap: 12px; justify-content: center;">
                 <button id="iepConfirmCancelBtn" class="secondary-button iep-button iep-button-secondary" type="button" style="flex: 1;">Cancel</button>
@@ -3121,7 +3121,9 @@ async function registerCandidates(imageMap, candidates, context) {
     const searchGround = isFlickrPage ? document.documentElement.innerHTML : "";
 
     console.log(`[IEP Debug] Deep Scanning:`, thumbUrl);
-    const fastResult = scanTextForUrls(searchGround, premiumSizes);
+    // Strict Local Fast Path: Only trust the local DOM if it contains the absolute maximum "o" size.
+    // This prevents SPA carousels from tricking the scanner with stale JSON.
+    const fastResult = scanTextForUrls(searchGround, ["o"]);
     if (fastResult) {
       console.log(`[IEP Debug] 🟢 FAST PATH SUCCESS!`);
       return saveAndReturn(fastResult);

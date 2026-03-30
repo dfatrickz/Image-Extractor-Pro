@@ -12,7 +12,7 @@ let persistentModeLoaded = false;
 api.runtime.onInstalled.addListener(() => {
   api.contextMenus.create({
     id: CONTEXT_MENU_ID,
-    title: "Save Image via Extractor Pro",
+    title: "Save Image via FastGrab",
     contexts: ["all"],
     icons: {
       "16": "icon-16.png",

@@ -1,5 +1,5 @@
 const api = browser;
-const DOWNLOAD_ROOT_FOLDER = "Image Extractor Pro";
+const DOWNLOAD_ROOT_FOLDER = "FastGrab Image Downloader";
 const ZIP_MIME_TYPE = "application/zip";
 const ZIP_VERSION = 20;
 const ZIP_STORE_METHOD = 0;
@@ -785,7 +785,9 @@ window.getTrueFlickrMax = async function(thumbUrl) {
   const searchGround = cacheData + " " + rawDom;
 
   console.log(`[IEP Debug] Deep Scanning:`, thumbUrl);
-  const fastResult = scanTextForUrls(searchGround, premiumSizes);
+  // Strict Local Fast Path: Only trust the local DOM if it contains the absolute maximum "o" size.
+  // This prevents SPA carousels from tricking the scanner with stale JSON.
+  const fastResult = scanTextForUrls(searchGround, ["o"]);
   if (fastResult) {
     console.log(`[IEP Debug] 🟢 FAST PATH SUCCESS!`);
     return saveAndReturn(fastResult);
@@ -2479,7 +2481,7 @@ function updateDownloadControls() {
   // Grab the live value from the input field if it exists, otherwise fall back to state/default
   const folderName = folderNameInput && folderNameInput.value.trim() !== ""
     ? normalizeRelativePath(folderNameInput.value.trim()) || folderNameInput.value.trim()
-    : (state.downloadPreferences?.subfolderName || "Image Extractor Pro");
+    : (state.downloadPreferences?.subfolderName || "FastGrab Image Downloader");
   const promptSaveAs = saveModeSelect.value === "prompt";
 
   qualityValue.textContent = `${qualityPercent}%`;
