@@ -1,0 +1,164 @@
+const api = typeof browser !== "undefined" ? browser : chrome;
+
+const CONTEXT_MENU_ID = "fastgrab-save-image";
+const activeTabs = new Set();
+
+async function ensureContentScript(tabId) {
+  try {
+    await api.tabs.sendMessage(tabId, { type: "PING" });
+  } catch (_error) {
+    await api.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ["content.js"]
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+function isSupportedPage(url) {
+  return /^https?:\/\//i.test(String(url || ""));
+}
+
+async function syncActionState(tabId, enabled) {
+  if (!api.action?.setBadgeText) {
+    return;
+  }
+
+  await api.action.setBadgeBackgroundColor({
+    tabId,
+    color: enabled ? "#10b981" : "#64748b"
+  });
+  await api.action.setBadgeText({
+    tabId,
+    text: enabled ? "ON" : ""
+  });
+  await api.action.setTitle({
+    tabId,
+    title: enabled ? "FastGrab is active on this page" : "Toggle FastGrab on this page"
+  });
+}
+
+async function createContextMenu() {
+  try {
+    await api.contextMenus.remove(CONTEXT_MENU_ID);
+  } catch (_error) {
+    // Ignore missing menu items during startup/reload.
+  }
+
+  api.contextMenus.create({
+    id: CONTEXT_MENU_ID,
+    title: "Save Image via FastGrab",
+    contexts: ["all"],
+    icons: {
+      "16": "icon-16.png",
+      "32": "icon-32.png"
+    }
+  });
+}
+
+api.runtime.onInstalled.addListener(() => {
+  void createContextMenu();
+});
+
+api.runtime.onStartup?.addListener(() => {
+  void createContextMenu();
+});
+
+api.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id || !isSupportedPage(tab.url)) {
+    return;
+  }
+
+  await ensureContentScript(tab.id);
+
+  try {
+    const response = await api.tabs.sendMessage(tab.id, { type: "FASTGRAB_TOGGLE_ACTIVE" });
+    const enabled = Boolean(response?.enabled);
+    if (enabled) {
+      activeTabs.add(tab.id);
+    } else {
+      activeTabs.delete(tab.id);
+    }
+    await syncActionState(tab.id, enabled);
+  } catch (error) {
+    activeTabs.delete(tab.id);
+    await syncActionState(tab.id, false);
+    console.warn("FastGrab could not toggle on this tab.", error);
+  }
+});
+
+api.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== CONTEXT_MENU_ID || !tab?.id || !isSupportedPage(tab.url)) {
+    return;
+  }
+
+  try {
+    await ensureContentScript(tab.id);
+
+    const response = await api.tabs.sendMessage(tab.id, {
+      type: "IEP_EXECUTE_CONTEXT_DOWNLOAD",
+      srcUrl: info.srcUrl || ""
+    });
+
+    if (response?.ok === false && info.srcUrl) {
+      await api.downloads.download({
+        url: info.srcUrl,
+        saveAs: true
+      });
+    }
+  } catch (error) {
+    if (info.srcUrl) {
+      try {
+        await api.downloads.download({
+          url: info.srcUrl,
+          saveAs: true
+        });
+        return;
+      } catch (_fallbackError) {
+        // Fall through to the shared warning below.
+      }
+    }
+
+    console.warn("FastGrab could not execute the context download.", error);
+  }
+});
+
+api.runtime.onMessage.addListener((message) => {
+  switch (message?.type) {
+    case "IEP_QUICK_DOWNLOAD":
+      return api.downloads.download({
+        url: message.url,
+        filename: message.filename || undefined,
+        saveAs: true
+      }).then((downloadId) => ({
+        ok: true,
+        downloadId
+      })).catch((error) => ({
+        ok: false,
+        error: error?.message || "Download failed."
+      }));
+    default:
+      return undefined;
+  }
+});
+
+api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete" || !activeTabs.has(tabId) || !isSupportedPage(tab?.url)) {
+    return;
+  }
+
+  void ensureContentScript(tabId)
+    .then(() => api.tabs.sendMessage(tabId, {
+      type: "FASTGRAB_SET_ACTIVE",
+      enabled: true
+    }))
+    .then(() => syncActionState(tabId, true))
+    .catch(async () => {
+      activeTabs.delete(tabId);
+      await syncActionState(tabId, false);
+    });
+});
+
+api.tabs.onRemoved.addListener((tabId) => {
+  activeTabs.delete(tabId);
+});

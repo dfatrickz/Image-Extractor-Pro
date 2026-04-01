@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "FastGrab Image Downloader",
+  "version": "1.0.0",
+  "description": "User-triggered image downloader with on-page Fast Grab hover saves, right-click downloads, and Flickr high-resolution upgrades.",
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "downloads",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "action": {
+    "default_title": "Toggle FastGrab on this page",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "fastgrab-standalone@github.dfatrickz",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}
