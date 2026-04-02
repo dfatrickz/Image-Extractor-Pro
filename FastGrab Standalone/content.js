@@ -50,12 +50,17 @@
   const flickrUrlCache = new Map();
   const state = {
     enabled: false,
-    hoverButton: null,
     currentTarget: null,
+    hoverButton: null,
+    hoverFlashTimer: 0,
+    settings: {
+      hoverEnabled: true,
+      autoUpgrade: true,
+      minSize: 80
+    },
     hoverFrame: 0,
     scrollFrame: 0,
     hoverRequestId: 0,
-    hoverFlashTimer: 0,
     pendingPoint: null
   };
 
@@ -347,6 +352,51 @@
     return true; // Unrelated UI element detected!
   }
 
+  function getVisualRect(img) {
+    const rawRect = img.getBoundingClientRect();
+    // If it's not a loaded image, just return the raw DOM rect
+    if (img.tagName !== "IMG" || !img.naturalWidth || !img.naturalHeight) {
+      return rawRect;
+    }
+
+    const style = window.getComputedStyle(img);
+    // Only calculate if the image is using "contain" or "scale-down" inside a larger box
+    if (style.objectFit === "contain" || style.objectFit === "scale-down") {
+      const imgRatio = img.naturalWidth / img.naturalHeight;
+      const boxRatio = rawRect.width / rawRect.height;
+
+      let visWidth;
+      let visHeight;
+      let visLeft;
+      let visTop;
+
+      if (imgRatio > boxRatio) {
+        // Image is constrained by the width of the box
+        visWidth = rawRect.width;
+        visHeight = rawRect.width / imgRatio;
+        visLeft = rawRect.left;
+        visTop = rawRect.top + ((rawRect.height - visHeight) / 2);
+      } else {
+        // Image is constrained by the height of the box
+        visHeight = rawRect.height;
+        visWidth = rawRect.height * imgRatio;
+        visTop = rawRect.top;
+        visLeft = rawRect.left + ((rawRect.width - visWidth) / 2);
+      }
+
+      return {
+        top: visTop,
+        left: visLeft,
+        right: visLeft + visWidth,
+        bottom: visTop + visHeight,
+        width: visWidth,
+        height: visHeight
+      };
+    }
+
+    return rawRect;
+  }
+
   function isValidTargetImage(element) {
     if (!(element instanceof HTMLImageElement) || element.tagName !== "IMG") {
       return false;
@@ -366,7 +416,7 @@
     }
 
     const rect = element.getBoundingClientRect();
-    if (rect.width < 80) {
+    if (rect.width < state.settings.minSize) {
       return false;
     }
 
@@ -387,15 +437,32 @@
     const topmost = hitElements.find((el) => el.id !== "iepSurferHoverBtn");
 
     for (const element of hitElements) {
+      if (!(element instanceof Element)) continue;
+
+      const style = window.getComputedStyle(element);
+
+      // 1. Ignore anything explicitly blurred (Standard or Backdrop)
+      if ((style.filter && style.filter.includes("blur")) ||
+          (style.backdropFilter && style.backdropFilter.includes("blur"))) {
+        continue;
+      }
+
+      // 2. Ignore massive background "wallpaper" images in lightboxes
+      const rect = element.getBoundingClientRect?.();
+      if (rect && rect.width >= window.innerWidth * 0.95 && rect.height >= window.innerHeight * 0.95) {
+        // If the image spans 95%+ of the entire screen, it is a backdrop layer, not the subject.
+        if (style.objectFit === "cover" || String(element.className || "").toLowerCase().includes("blur")) {
+          continue;
+        }
+      }
+
       if (element.tagName === "IMG" && isValidTargetImage(element) && isHoverVisibleTarget(element)) {
         if (topmost && isStructurallyOccluded(topmost, element)) continue; // Blocked by UI
         return element;
       }
-      
-      const style = window.getComputedStyle(element);
+
       if (style.backgroundImage && style.backgroundImage !== "none" && style.backgroundImage.startsWith("url(")) {
-        const rect = element.getBoundingClientRect();
-        if (rect.width >= 80 && rect.height >= 80 && isHoverVisibleTarget(element)) {
+        if (rect && rect.width >= state.settings.minSize && rect.height >= state.settings.minSize && isHoverVisibleTarget(element)) {
           if (topmost && isStructurallyOccluded(topmost, element)) continue; // Blocked by UI
           return element;
         }
@@ -1011,7 +1078,9 @@
         targetUrl = info.url;
       } else {
         // Deep scan fallback
-        targetUrl = await getBestImageUrl(targetElement);
+        if (state.settings.autoUpgrade) {
+          targetUrl = await getBestImageUrl(targetElement);
+        }
         if (!targetUrl) targetUrl = info?.url || "";
       }
 
@@ -1064,7 +1133,7 @@
 
   function updateSurferHoverButton(point) {
     const button = ensureHoverButton();
-    if (!state.enabled || !point) {
+    if (!state.enabled || !state.settings.hoverEnabled || !point) {
       hideSurferHoverButton();
       return;
     }
@@ -1083,8 +1152,8 @@
       return;
     }
 
-    const rect = targetImg.getBoundingClientRect?.();
-    if (!rect || rect.width < 80 || rect.height < 80) {
+    const rect = getVisualRect(targetImg);
+    if (!rect || rect.width < state.settings.minSize || rect.height < state.settings.minSize) {
       hideSurferHoverButton();
       return;
     }
@@ -1241,6 +1310,21 @@
         return handleContextQuickDownload(message.srcUrl || "");
       default:
         return undefined;
+    }
+  });
+
+  // Load dynamic settings from storage
+  api.storage.local.get("fastgrab_settings").then((data) => {
+    if (data.fastgrab_settings) {
+      state.settings = { ...state.settings, ...data.fastgrab_settings };
+    }
+  });
+
+  // Listen for live updates if the user changes settings while a tab is open
+  api.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.fastgrab_settings?.newValue) {
+      state.settings = { ...state.settings, ...changes.fastgrab_settings.newValue };
+      if (!state.settings.hoverEnabled) hideSurferHoverButton();
     }
   });
 

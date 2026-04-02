@@ -92,6 +92,9 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
+  let extractionFailed = false;
+  let isUserCancel = false;
+
   try {
     await ensureContentScript(tab.id);
 
@@ -100,26 +103,32 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
       srcUrl: info.srcUrl || ""
     });
 
-    if (response?.ok === false && info.srcUrl) {
+    if (response?.ok === false) {
+      const errMsg = (response.error || "").toLowerCase();
+      if (errMsg.includes("cancel") || errMsg.includes("user")) {
+        isUserCancel = true;
+      } else {
+        extractionFailed = true;
+      }
+    }
+  } catch (_error) {
+    // Message failed (e.g. content script didn't inject or page crashed)
+    extractionFailed = true;
+  }
+
+  // Fallback ONLY if the script genuinely failed, and the user didn't cancel
+  if (extractionFailed && !isUserCancel && info.srcUrl) {
+    try {
       await api.downloads.download({
         url: info.srcUrl,
         saveAs: true
       });
-    }
-  } catch (error) {
-    if (info.srcUrl) {
-      try {
-        await api.downloads.download({
-          url: info.srcUrl,
-          saveAs: true
-        });
-        return;
-      } catch (_fallbackError) {
-        // Fall through to the shared warning below.
+    } catch (fallbackError) {
+      const errMsg = (fallbackError?.message || "").toLowerCase();
+      if (!errMsg.includes("cancel") && !errMsg.includes("user")) {
+        console.warn("FastGrab fallback download failed.", fallbackError);
       }
     }
-
-    console.warn("FastGrab could not execute the context download.", error);
   }
 });
 
