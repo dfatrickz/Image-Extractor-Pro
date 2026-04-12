@@ -1,3 +1,76 @@
+// --- NETWORK ROUTING CONFIGURATION ---
+async function configureResourceHeaders() {
+  if (!browser.declarativeNetRequest) return;
+
+  try {
+    await browser.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [3],
+      addRules: [
+        {
+          id: 3,
+          priority: 1,
+          action: {
+            type: "modifyHeaders",
+            requestHeaders: [
+              {
+                header: "Referer",
+                operation: "set",
+                value: "https://www.pixiv.net/"
+              }
+            ]
+          },
+          condition: {
+            urlFilter: "||i.pximg.net*",
+            resourceTypes: ["image", "xmlhttprequest"]
+          }
+        }
+      ]
+    });
+  } catch (error) {
+    console.warn("FastGrab: Failed to configure resource headers.", error);
+  }
+}
+
+// Initialize routing configuration
+configureResourceHeaders();
+
+
+// --- BLOB DOWNLOAD INTERCEPTOR ---
+async function processSecureDownload(targetUrl) {
+  // If it's a Pixiv URL, we must pull it into Firefox's local memory first
+  if (targetUrl.includes("i.pximg.net")) {
+    try {
+      // 1. Fetch the image. Our DNR rule automatically attaches the Pixiv Referer here!
+      const response = await fetch(targetUrl);
+      if (!response.ok) throw new Error("Fetch failed");
+
+      // 2. Convert to raw data
+      const blob = await response.blob();
+
+      // 3. Create the internal Firefox memory link (blob:moz-extension://...)
+      const blobUrl = URL.createObjectURL(blob);
+
+      // 4. Send the local memory link to the download manager
+      await browser.downloads.download({
+        url: blobUrl,
+        saveAs: true
+      });
+
+      // 5. Clean up the memory link after 10 seconds to prevent RAM leaks
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      return;
+    } catch (err) {
+      console.warn("FastGrab: Blob interception failed, falling back.", err);
+    }
+  }
+
+  // Standard download for Reddit, Pinterest, and everything else
+  await browser.downloads.download({
+    url: targetUrl,
+    saveAs: true
+  });
+}
+
 const api = typeof browser !== "undefined" ? browser : chrome;
 
 const CONTEXT_MENU_ID = "fastgrab-save-image";
@@ -119,10 +192,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
   // Fallback ONLY if the script genuinely failed, and the user didn't cancel
   if (extractionFailed && !isUserCancel && info.srcUrl) {
     try {
-      await api.downloads.download({
-        url: info.srcUrl,
-        saveAs: true
-      });
+      await processSecureDownload(info.srcUrl);
     } catch (fallbackError) {
       const errMsg = (fallbackError?.message || "").toLowerCase();
       if (!errMsg.includes("cancel") && !errMsg.includes("user")) {
@@ -135,17 +205,12 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
 api.runtime.onMessage.addListener((message) => {
   switch (message?.type) {
     case "IEP_QUICK_DOWNLOAD":
-      return api.downloads.download({
-        url: message.url,
-        filename: message.filename || undefined,
-        saveAs: true
-      }).then((downloadId) => ({
-        ok: true,
-        downloadId
-      })).catch((error) => ({
-        ok: false,
-        error: error?.message || "Download failed."
-      }));
+      return processSecureDownload(message.url)
+        .then(() => ({ ok: true }))
+        .catch((error) => ({
+          ok: false,
+          error: error?.message || "Download routing failed."
+        }));
     default:
       return undefined;
   }

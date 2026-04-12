@@ -5,7 +5,6 @@
   window.__fastGrabStandaloneLoaded = true;
 
   const api = typeof browser !== "undefined" ? browser : chrome;
-  const FASTGRAB_AUTO_UPGRADE = true;
   const URL_ATTRIBUTES = [
     "data-src",
     "data-original",
@@ -493,6 +492,75 @@
       }
     }
     return null;
+  }
+
+  async function fetchAsBase64(url) {
+    try {
+      // Fetch the image natively within the authenticated tab context
+      const response = await fetch(url);
+      if (!response.ok) return null;
+
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result); // Returns data:image/...;base64,...
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  async function upgradeKnownUrls(url) {
+    if (!url || !url.startsWith("http")) return url;
+    try {
+      const urlObj = new URL(url);
+
+// --- PIXIV RESOURCE VERIFICATION ---
+      if (urlObj.hostname === "i.pximg.net") {
+        const match = urlObj.pathname.match(/(\/img\/.*?\/\d+_p\d+)/i);
+        if (match) {
+          const basePath = match[1];
+          const possibleExtensions = [".png", ".jpg", ".gif"];
+
+          for (const ext of possibleExtensions) {
+            const testUrl = "https://i.pximg.net/img-original" + basePath + ext;
+            try {
+              // The background rule handles the Referer natively!
+              const response = await fetch(testUrl, { method: "HEAD" });
+              if (response.ok) {
+                return testUrl; // Just return the clean URL
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+        }
+        return url;
+      }
+
+      // --- PINTEREST ASYNC PROBER ---
+      if (urlObj.hostname === "i.pinimg.com") {
+        let basePath = urlObj.pathname.replace(/\/\d+x\//i, "/originals/");
+        basePath = basePath.replace(/\.[^/.]+$/, "");
+        const possibleExtensions = [".jpg", ".heic", ".png", ".gif"];
+
+        for (const ext of possibleExtensions) {
+          const testUrl = urlObj.origin + basePath + ext;
+          try {
+            const response = await fetch(testUrl, { method: "HEAD" });
+            if (response.ok) return testUrl;
+          } catch (_error) { continue; }
+        }
+        return url;
+      }
+
+      // Reddit and unhandled domains
+      return urlObj.href;
+    } catch (_error) {
+      return url;
+    }
   }
 
   const getTrueImageUrl = (element) => {
@@ -997,7 +1065,7 @@
   async function handleFastGrab(thumbUrl) {
     let downloadUrl = resolveAbsoluteUrl(thumbUrl) || thumbUrl;
 
-    if (FASTGRAB_AUTO_UPGRADE && typeof window.getTrueFlickrMax === "function") {
+    if (state.settings.autoUpgrade && typeof window.getTrueFlickrMax === "function") {
       const maxData = await window.getTrueFlickrMax(downloadUrl);
       downloadUrl = resolveAbsoluteUrl(maxData?.url || downloadUrl) || downloadUrl;
     }
@@ -1082,6 +1150,10 @@
           targetUrl = await getBestImageUrl(targetElement);
         }
         if (!targetUrl) targetUrl = info?.url || "";
+      }
+
+      if (state.settings.autoUpgrade) {
+        targetUrl = await upgradeKnownUrls(targetUrl);
       }
 
       if (targetUrl) {
@@ -1245,7 +1317,16 @@
       };
     }
 
-    const response = await handleFastGrab(baseUrl);
+    let finalUrl = baseUrl;
+    if (state.settings.autoUpgrade) {
+      finalUrl = await upgradeKnownUrls(finalUrl);
+      if (typeof window.getTrueFlickrMax === "function") {
+        const maxData = await window.getTrueFlickrMax(finalUrl);
+        finalUrl = maxData?.url || finalUrl;
+      }
+    }
+
+    const response = await handleFastGrab(finalUrl);
     return response?.ok === false ? response : { ok: true };
   }
 

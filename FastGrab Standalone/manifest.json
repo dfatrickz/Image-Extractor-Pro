@@ -14,7 +14,8 @@
     "contextMenus",
     "downloads",
     "scripting",
-    "storage"
+    "storage",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "<all_urls>"
