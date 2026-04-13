@@ -36,7 +36,7 @@ configureResourceHeaders();
 
 
 // --- BLOB DOWNLOAD INTERCEPTOR ---
-async function processSecureDownload(targetUrl) {
+async function processSecureDownload(targetUrl, targetFilename) {
   // If it's a Pixiv URL, we must pull it into Firefox's local memory first
   if (targetUrl.includes("i.pximg.net")) {
     try {
@@ -53,6 +53,7 @@ async function processSecureDownload(targetUrl) {
       // 4. Send the local memory link to the download manager
       await browser.downloads.download({
         url: blobUrl,
+        filename: targetFilename || undefined,
         saveAs: true
       });
 
@@ -67,6 +68,7 @@ async function processSecureDownload(targetUrl) {
   // Standard download for Reddit, Pinterest, and everything else
   await browser.downloads.download({
     url: targetUrl,
+    filename: targetFilename || undefined,
     saveAs: true
   });
 }
@@ -205,11 +207,11 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
 api.runtime.onMessage.addListener((message) => {
   switch (message?.type) {
     case "IEP_QUICK_DOWNLOAD":
-      return processSecureDownload(message.url)
+      return processSecureDownload(message.url, message.filename)
         .then(() => ({ ok: true }))
         .catch((error) => ({
           ok: false,
-          error: error?.message || "Download routing failed."
+          error: error?.message || "Download failed."
         }));
     default:
       return undefined;

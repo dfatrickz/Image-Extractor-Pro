@@ -517,6 +517,66 @@
     try {
       const urlObj = new URL(url);
 
+      // --- TUMBLR DUAL-FORMAT PROBER ---
+      if (urlObj.hostname.endsWith("media.tumblr.com")) {
+        const path = urlObj.pathname;
+        let testUrls = [];
+
+        // 1. Modern Format (e.g., /s540x810/ or /s64x64u_c1/)
+        if (/\/s\d+x\d+(?:u_c\d+)?\//i.test(path)) {
+          const base2048 = path.replace(/\/s\d+x\d+(?:u_c\d+)?\//i, "/s2048x3072/");
+          const base1280 = path.replace(/\/s\d+x\d+(?:u_c\d+)?\//i, "/s1280x1920/");
+          testUrls.push(urlObj.origin + base2048);
+          testUrls.push(urlObj.origin + base1280);
+        }
+        // 2. Classic Format (e.g., _500.jpg, _540.png)
+        else if (/_(\d+)\.(jpg|jpeg|png|gif)$/i.test(path)) {
+          const match = path.match(/_(\d+)\.(jpg|jpeg|png|gif)$/i);
+          if (match && parseInt(match[1], 10) < 1280) {
+            testUrls.push(urlObj.origin + path.replace(/_\d+\./, "_2048."));
+            testUrls.push(urlObj.origin + path.replace(/_\d+\./, "_1280."));
+          }
+        }
+
+        // Execute lightweight probes to verify the maximum available resolution
+        for (const testUrl of testUrls) {
+          try {
+            const response = await fetch(testUrl, { method: "HEAD" });
+            if (response.ok) return testUrl;
+          } catch (_error) {
+            continue; // Silently move to the next fallback if blocked or 404
+          }
+        }
+        return url; // Fallback to standard preview if all probes fail
+      }
+
+      // --- IMGUR ASYNC PROBER ---
+      if (urlObj.hostname === "i.imgur.com" || urlObj.hostname === "imgur.com") {
+        // Imgur core IDs are typically 5 or 7 characters.
+        // Thumbnails append a size suffix (s, b, t, m, l, h) before the extension.
+        const pathMatch = urlObj.pathname.match(/^(\/[a-zA-Z0-9]{5,7})([sbtmlh]?)\.(jpg|jpeg|png|gif|webp)$/i);
+
+        if (pathMatch) {
+          const basePath = pathMatch[1]; // The clean, core ID without the thumbnail suffix
+
+          // Probe for highest quality, uncompressed native formats first
+          const possibleExtensions = [".png", ".jpg", ".gif"];
+
+          for (const ext of possibleExtensions) {
+            const testUrl = "https://i.imgur.com" + basePath + ext;
+            try {
+              const response = await fetch(testUrl, { method: "HEAD" });
+              if (response.ok) {
+                return testUrl; // Found the raw original file!
+              }
+            } catch (_error) {
+              continue;
+            }
+          }
+        }
+        return url; // Fallback to standard URL if all probes fail
+      }
+
 // --- PIXIV RESOURCE VERIFICATION ---
       if (urlObj.hostname === "i.pximg.net") {
         const match = urlObj.pathname.match(/(\/img\/.*?\/\d+_p\d+)/i);
@@ -1056,6 +1116,8 @@
       if (!baseName.includes(".")) {
         baseName = `${baseName}.${format}`;
       }
+      // Normalize invalid CDN extensions
+      baseName = baseName.replace(/\.pnj$/i, ".png").replace(/\.gifv$/i, ".gif");
       return baseName;
     } catch (_error) {
       return `fastgrab_${Date.now()}.jpg`;
